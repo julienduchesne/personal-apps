@@ -9,17 +9,17 @@ import { Link } from "./Link";
 export function RecipeCard({ recipe, pickRate }: { recipe: Recipe; pickRate?: PickRateInfo }) {
   return (
     <Link href={`/recipes/${recipe.id}/edit`} className="block">
-      <Card className="hover:shadow-lg transition-all rounded-2xl border-amber-200/50 hover:border-orange-300 hover:bg-amber-50/30">
+      <Card className="hover:shadow-lg transition-all rounded-2xl border-border hover:border-primary/40 hover:bg-accent/50">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-stone-800 leading-tight">{recipe.name}</h3>
+            <h3 className="font-semibold text-foreground leading-tight">{recipe.name}</h3>
             <div className="flex items-center gap-2 shrink-0">
               {pickRate && pickRate.timesChosen > 0 && (
-                <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                <span className="text-xs text-primary/80 font-medium whitespace-nowrap">
                   {pickRate.timesChosen}× / {pickRate.daysInRotation}d
                 </span>
               )}
-              <span className="text-xs text-teal-600 whitespace-nowrap flex items-center gap-1">
+              <span className="text-xs text-secondary-foreground whitespace-nowrap flex items-center gap-1">
                 ⏱️ {recipe.prepTime}m
               </span>
             </div>

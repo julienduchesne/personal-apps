@@ -3,7 +3,7 @@ import { MobileSidebar } from "./MobileSidebar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col flex-1 bg-gradient-to-br from-amber-50/50 via-orange-50/30 to-lime-50/20">
+    <div className="flex flex-col flex-1 bg-background">
       {/* Mobile nav */}
       <MobileSidebar />
 

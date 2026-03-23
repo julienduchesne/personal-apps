@@ -29,10 +29,10 @@ function AuthForm() {
   );
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-lime-50/30">
-      <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-sm text-center">
+    <main className="min-h-screen flex items-center justify-center bg-background">
+      <div className="bg-card rounded-[var(--radius-lg)] shadow-lg p-8 w-full max-w-sm text-center">
         <div className="text-5xl mb-3">🍽️</div>
-        <h1 className="text-2xl font-bold text-stone-800 mb-6">Meal Planner</h1>
+        <h1 className="text-2xl font-bold text-foreground mb-6 font-heading">Meal Planner</h1>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <Input
@@ -45,8 +45,8 @@ function AuthForm() {
               className="rounded-xl"
             />
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
-          <Button type="submit" className="w-full rounded-xl bg-orange-600 hover:bg-orange-700">
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" className="w-full rounded-xl bg-primary hover:bg-primary/90">
             Continue
           </Button>
         </form>
@@ -59,8 +59,8 @@ export default function AuthPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-lime-50/30">
-          <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-sm text-center">
+        <main className="min-h-screen flex items-center justify-center bg-background">
+          <div className="bg-card rounded-[var(--radius-lg)] shadow-lg p-8 w-full max-w-sm text-center">
             Loading...
           </div>
         </main>

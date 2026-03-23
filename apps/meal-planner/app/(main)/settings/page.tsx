@@ -14,11 +14,11 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-8 max-w-2xl">
-      <h1 className="text-2xl font-bold text-stone-800">Settings</h1>
+      <h1 className="text-2xl font-bold text-foreground font-heading">Settings</h1>
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-stone-700">Weekly Cooking Schedule</h2>
+          <h2 className="text-lg font-semibold text-foreground">Weekly Cooking Schedule</h2>
           <p className="text-sm text-muted-foreground">
             Set how much time you have to cook each day. Suggestions will respect these limits.
           </p>
@@ -28,7 +28,7 @@ export default async function SettingsPage() {
 
       <section className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-stone-700">Weekly Tag Limits</h2>
+          <h2 className="text-lg font-semibold text-foreground">Weekly Tag Limits</h2>
           <p className="text-sm text-muted-foreground">
             Limit how many times a tag can appear per week (e.g., &quot;fried&quot; max 2 times).
           </p>

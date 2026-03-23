@@ -8,7 +8,7 @@ export default async function NewRecipePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-stone-800">New Recipe</h1>
+      <h1 className="text-2xl font-bold text-foreground font-heading">New Recipe</h1>
       <RecipeForm allTags={allTags} />
     </div>
   );

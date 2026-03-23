@@ -13,7 +13,7 @@ export default async function EditRecipePage({ params }: { params: Promise<{ id:
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-stone-800">Edit Recipe</h1>
+        <h1 className="text-2xl font-bold text-foreground font-heading">Edit Recipe</h1>
         <DeleteRecipeButton id={recipe.id} />
       </div>
       <RecipeForm recipe={recipe} allTags={allTags} />

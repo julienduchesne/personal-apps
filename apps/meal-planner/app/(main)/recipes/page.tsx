@@ -13,9 +13,9 @@ export default async function RecipesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-stone-800">Recipes</h1>
+        <h1 className="text-2xl font-bold text-foreground font-heading">Recipes</h1>
         <Link href="/recipes/new">
-          <Button className="rounded-xl bg-orange-600 hover:bg-orange-700">+ Add Recipe</Button>
+          <Button className="rounded-xl bg-primary hover:bg-primary/90">+ Add Recipe</Button>
         </Link>
       </div>
 

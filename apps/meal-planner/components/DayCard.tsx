@@ -39,26 +39,26 @@ export function DayCard({
         onClick={() => setPickerOpen(true)}
         className={`text-left w-full rounded-2xl border p-3 transition-all cursor-pointer hover:shadow-lg ${
           isToday
-            ? "border-orange-400 bg-gradient-to-br from-yellow-50 to-orange-50 shadow-md ring-2 ring-orange-300"
+            ? "border-primary bg-accent shadow-md ring-2 ring-primary/30"
             : isPast
-            ? "border-stone-200 bg-stone-50/60"
-            : "border-amber-200/60 bg-white hover:border-orange-300 hover:bg-amber-50/30"
+            ? "border-border bg-muted/60"
+            : "border-border bg-card hover:border-primary/40 hover:bg-accent/50"
         }`}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-2">
           <div>
             <span className={`text-xs font-semibold uppercase tracking-wide ${
-              isToday ? "text-orange-600" : isPast ? "text-stone-400" : "text-teal-700"
+              isToday ? "text-primary" : isPast ? "text-muted-foreground" : "text-secondary-foreground"
             }`}>
               {getDayNameShort(dayOfWeek)}
             </span>
-            <span className={`text-xs ml-1 ${isToday ? "text-orange-400" : "text-muted-foreground"}`}>
+            <span className={`text-xs ml-1 ${isToday ? "text-primary/70" : "text-muted-foreground"}`}>
               {formatDateShort(date)}
             </span>
           </div>
           {cookingTime > 0 && (
-            <span className="text-xs text-amber-500">⏱️ {cookingTime}m</span>
+            <span className="text-xs text-primary/70">⏱️ {cookingTime}m</span>
           )}
         </div>
 
@@ -66,7 +66,7 @@ export function DayCard({
         {meal ? (
           // Logged meal
           <div className="space-y-1">
-            <p className={`text-sm font-medium truncate ${isPast ? "text-stone-600" : "text-stone-800"}`}>
+            <p className={`text-sm font-medium truncate ${isPast ? "text-muted-foreground" : "text-foreground"}`}>
               {mealRecipe ? (
                 <>
                   {mealRecipe.name}
@@ -82,7 +82,7 @@ export function DayCard({
                 ))}
               </div>
             )}
-            <p className="text-xs text-emerald-600 font-semibold">✓ Logged</p>
+            <p className="text-xs text-secondary-foreground font-semibold">✓ Logged</p>
           </div>
         ) : cookingTime === 0 ? (
           <p className="text-xs text-muted-foreground italic">No cooking</p>
@@ -93,12 +93,12 @@ export function DayCard({
           <div className="space-y-1">
             {suggestions.slice(0, 3).map((s, i) => (
               <div key={s.recipe.id} className="flex items-center gap-1.5">
-                <span className="text-xs text-orange-400 font-bold">{i + 1}.</span>
-                <span className="text-xs text-stone-700 truncate">{s.recipe.name}</span>
+                <span className="text-xs text-primary/70 font-bold">{i + 1}.</span>
+                <span className="text-xs text-foreground/80 truncate">{s.recipe.name}</span>
               </div>
             ))}
             {suggestions.length > 3 && (
-              <p className="text-xs text-teal-600">+{suggestions.length - 3} more</p>
+              <p className="text-xs text-secondary-foreground">+{suggestions.length - 3} more</p>
             )}
           </div>
         ) : (

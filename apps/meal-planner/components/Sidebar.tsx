@@ -19,34 +19,33 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 shrink-0 bg-gradient-to-b from-red-900 via-red-800 to-orange-900 border-r border-red-950 p-4 flex flex-col">
+    <aside className="w-[var(--sidebar-width)] shrink-0 bg-sidebar border-r border-border p-[var(--space-6)] pr-0 flex flex-col sticky top-0 h-screen overflow-y-auto">
       <div
-        className="mb-6 px-1"
+        className="px-[var(--space-3)] mb-[var(--space-4)]"
         style={{
-          "--switcher-bg": "rgba(255,255,255,0.08)",
-          "--switcher-bg-hover": "rgba(255,255,255,0.15)",
-          "--switcher-border": "rgba(255,255,255,0.15)",
-          "--switcher-text": "#fde68a",
-          "--switcher-dropdown-bg": "rgba(80,20,10,0.95)",
-          "--switcher-item-hover": "rgba(255,255,255,0.12)",
-          "--switcher-item-active": "rgba(255,255,255,0.08)",
-          "--switcher-shadow": "0 4px 12px rgba(0,0,0,0.3)",
+          "--switcher-border": "var(--border)",
+          "--switcher-text": "var(--foreground)",
+          "--switcher-bg-hover": "var(--accent)",
+          "--switcher-dropdown-bg": "var(--card)",
+          "--switcher-item-hover": "var(--accent)",
+          "--switcher-item-active": "rgba(212, 118, 44, 0.06)",
+          "--switcher-shadow": "var(--shadow-md)",
         } as React.CSSProperties}
       >
         <AppSwitcher apps={APPS} />
       </div>
 
-      <nav className="space-y-1 flex-1">
+      <nav className="space-y-[var(--space-1)] flex-1">
         {NAV_ITEMS.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`flex items-center gap-[var(--space-3)] px-[var(--space-5)] py-[var(--space-3)] mx-[var(--space-2)] rounded-[var(--radius-md)] text-[0.9375rem] font-medium no-underline transition-all duration-[var(--transition-fast)] ${
                 active
-                  ? "bg-white/15 text-amber-100"
-                  : "text-red-200/80 hover:bg-white/10 hover:text-amber-100"
+                  ? "bg-accent text-primary font-semibold"
+                  : "text-muted-foreground hover:bg-[rgba(212,118,44,0.06)] hover:text-foreground"
               }`}
             >
               <span>{item.emoji}</span>

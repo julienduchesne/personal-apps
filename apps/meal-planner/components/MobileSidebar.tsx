@@ -23,34 +23,33 @@ export function MobileSidebar() {
 
   return (
     <div className="md:hidden">
-      <div className="flex items-center justify-between bg-gradient-to-r from-red-900 to-red-800 border-b border-red-950 px-4 py-3">
-        <Link href="/week" className="flex items-center gap-2">
+      <div className="flex items-center justify-between bg-card border-b border-border px-4 py-3">
+        <Link href="/week" className="flex items-center gap-2 no-underline">
           <span className="text-xl">🍽️</span>
-          <span className="font-bold text-amber-200">Meal Planner</span>
+          <span className="font-heading font-bold text-foreground">Meal Planner</span>
         </Link>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setOpen(!open)}
-          className="text-amber-200 hover:text-white hover:bg-white/10"
+          className="text-muted-foreground hover:text-foreground hover:bg-accent"
         >
           {open ? "✕" : "☰"}
         </Button>
       </div>
 
       {open && (
-        <nav className="bg-red-900/95 border-b border-red-950 px-4 py-2 space-y-1">
+        <nav className="bg-card border-b border-border px-4 py-2 space-y-1">
           <div
-            className="py-1 text-amber-200"
+            className="py-1 text-muted-foreground"
             style={{
-              "--switcher-bg": "rgba(255,255,255,0.08)",
-              "--switcher-bg-hover": "rgba(255,255,255,0.15)",
-              "--switcher-border": "rgba(255,255,255,0.15)",
-              "--switcher-text": "#fde68a",
-              "--switcher-dropdown-bg": "rgba(80,20,10,0.95)",
-              "--switcher-item-hover": "rgba(255,255,255,0.12)",
-              "--switcher-item-active": "rgba(255,255,255,0.08)",
-              "--switcher-shadow": "0 4px 12px rgba(0,0,0,0.3)",
+              "--switcher-border": "var(--border)",
+              "--switcher-text": "var(--foreground)",
+              "--switcher-bg-hover": "var(--accent)",
+              "--switcher-dropdown-bg": "var(--card)",
+              "--switcher-item-hover": "var(--accent)",
+              "--switcher-item-active": "rgba(212, 118, 44, 0.06)",
+              "--switcher-shadow": "var(--shadow-md)",
             } as React.CSSProperties}
           >
             <AppSwitcher apps={APPS} />
@@ -62,10 +61,10 @@ export function MobileSidebar() {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium no-underline transition-colors ${
                   active
-                    ? "bg-white/15 text-amber-100"
-                    : "text-red-200/80 hover:bg-white/10"
+                    ? "bg-accent text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
               >
                 <span>{item.emoji}</span>

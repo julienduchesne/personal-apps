@@ -37,9 +37,9 @@ export function ScheduleEditor({ schedule }: { schedule: DaySchedule[] }) {
       {local.map((day) => (
         <div
           key={day.dayOfWeek}
-          className="flex items-center gap-4 bg-white rounded-xl p-3 border border-amber-200/50"
+          className="flex items-center gap-4 bg-card rounded-xl p-3 border border-border"
         >
-          <span className="w-24 text-sm font-medium text-stone-700">
+          <span className="w-24 text-sm font-medium text-foreground/90">
             {getDayName(day.dayOfWeek)}
           </span>
           <Slider
@@ -50,7 +50,7 @@ export function ScheduleEditor({ schedule }: { schedule: DaySchedule[] }) {
             onValueChange={(v) => handleChange(day.dayOfWeek, Array.isArray(v) ? v[0] : v)}
             className="flex-1"
           />
-          <span className="w-16 text-right text-sm text-teal-600 tabular-nums">
+          <span className="w-16 text-right text-sm text-secondary-foreground tabular-nums">
             {day.cookingTime === 0 ? "Off" : `${day.cookingTime}m`}
           </span>
         </div>

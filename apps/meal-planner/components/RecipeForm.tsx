@@ -193,14 +193,14 @@ export function RecipeForm({ recipe, allTags = [] }: Props) {
       <div className="space-y-2">
         <Label htmlFor="pdfUpload">Recipe PDF</Label>
         {hasPdf && !pdfFile && (
-          <div className="flex items-center gap-2 text-sm text-stone-600">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>PDF attached</span>
             <Button
               type="button"
               variant="outline"
               size="xs"
               onClick={() => setHasPdf(false)}
-              className="rounded-xl text-red-600 hover:text-red-700"
+              className="rounded-xl text-destructive hover:text-destructive/80"
             >
               Remove
             </Button>
@@ -220,7 +220,7 @@ export function RecipeForm({ recipe, allTags = [] }: Props) {
       </div>
 
       <div className="flex gap-3 pt-2">
-        <Button type="submit" disabled={saving} className="rounded-xl bg-orange-600 hover:bg-orange-700">
+        <Button type="submit" disabled={saving} className="rounded-xl bg-primary hover:bg-primary/90">
           {saving ? "Saving..." : recipe ? "Update Recipe" : "Create Recipe"}
         </Button>
         <Button

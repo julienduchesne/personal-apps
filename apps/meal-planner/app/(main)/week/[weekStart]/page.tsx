@@ -33,7 +33,7 @@ export default async function WeekDetailPage({
         <Link href={`/week/${prevWeek}`}>
           <Button variant="outline" className="rounded-xl">&larr; Previous</Button>
         </Link>
-        <h1 className="text-lg font-bold text-stone-800">
+        <h1 className="text-lg font-bold text-foreground font-heading">
           {formatDateShort(dates[0])} &ndash; {formatDateShort(dates[6])}
         </h1>
         <Link href={`/week/${nextWeek}`}>

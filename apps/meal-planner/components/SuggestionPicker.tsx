@@ -72,15 +72,15 @@ export function SuggestionPicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="text-stone-800">{dateLabel}</DialogTitle>
+          <DialogTitle className="text-foreground">{dateLabel}</DialogTitle>
         </DialogHeader>
 
         {currentMeal && (
-          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-3 mb-2 border border-emerald-200/50">
+          <div className="bg-secondary rounded-xl p-3 mb-2 border border-secondary-foreground/20">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-emerald-700 uppercase tracking-wide font-medium">Currently logged</p>
-                <p className="font-medium text-stone-800">
+                <p className="text-xs text-secondary-foreground uppercase tracking-wide font-medium">Currently logged</p>
+                <p className="font-medium text-foreground">
                   {currentMeal.recipeName ?? currentMeal.freeText ?? "Unknown"}
                 </p>
               </div>
@@ -89,7 +89,7 @@ export function SuggestionPicker({
                 size="sm"
                 onClick={handleClear}
                 disabled={pending}
-                className="text-red-400 hover:text-red-600"
+                className="text-destructive/70 hover:text-destructive"
               >
                 Clear
               </Button>
@@ -99,22 +99,22 @@ export function SuggestionPicker({
 
         {suggestions.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium text-orange-700">Suggestions</p>
+            <p className="text-sm font-medium text-primary">Suggestions</p>
             {suggestions.map((s) => (
               <button
                 key={s.recipe.id}
                 onClick={() => handlePickRecipe(s.recipe.id)}
                 disabled={pending}
-                className="w-full text-left bg-white border border-amber-200/60 hover:border-orange-400 hover:shadow-sm rounded-xl p-3 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full text-left bg-card border border-border hover:border-primary/40 hover:shadow-sm rounded-xl p-3 transition-all cursor-pointer disabled:opacity-50"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-medium text-stone-800 truncate">{s.recipe.name}</p>
-                    <p className="text-xs text-teal-600 mt-0.5">
+                    <p className="font-medium text-foreground truncate">{s.recipe.name}</p>
+                    <p className="text-xs text-secondary-foreground mt-0.5">
                       ⏱️ {s.recipe.prepTime}m
                     </p>
                   </div>
-                  <span className="text-xs text-amber-500 font-medium shrink-0">
+                  <span className="text-xs text-primary/70 font-medium shrink-0">
                     {Math.round(s.score)}pts
                   </span>
                 </div>
@@ -133,8 +133,8 @@ export function SuggestionPicker({
           </div>
         )}
 
-        <div className="space-y-2 pt-2 border-t border-stone-200">
-          <p className="text-sm font-medium text-teal-700">Search or type what you cooked</p>
+        <div className="space-y-2 pt-2 border-t border-border">
+          <p className="text-sm font-medium text-secondary-foreground">Search or type what you cooked</p>
           <div className="flex gap-2">
             <Input
               value={search}
@@ -159,7 +159,7 @@ export function SuggestionPicker({
               <Button
                 onClick={handleLogAdHoc}
                 disabled={pending}
-                className="rounded-xl bg-orange-600 hover:bg-orange-700 text-white shrink-0"
+                className="rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
               >
                 Log
               </Button>
@@ -172,10 +172,10 @@ export function SuggestionPicker({
                   key={r.id}
                   onClick={() => handlePickRecipe(r.id)}
                   disabled={pending}
-                  className="w-full text-left text-sm py-1.5 px-2 rounded-lg hover:bg-amber-50 transition-colors cursor-pointer disabled:opacity-50"
+                  className="w-full text-left text-sm py-1.5 px-2 rounded-lg hover:bg-accent transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {r.name}
-                  <span className="text-xs text-teal-500 ml-2">⏱️ {r.prepTime}m</span>
+                  <span className="text-xs text-secondary-foreground ml-2">⏱️ {r.prepTime}m</span>
                 </button>
               ))}
             </div>
@@ -186,7 +186,7 @@ export function SuggestionPicker({
             <button
               onClick={handleLogAdHoc}
               disabled={pending}
-              className="w-full text-left text-sm py-1.5 px-2 rounded-lg hover:bg-orange-50 text-orange-700 transition-colors cursor-pointer disabled:opacity-50 border border-orange-200 border-dashed"
+              className="w-full text-left text-sm py-1.5 px-2 rounded-lg hover:bg-accent text-primary transition-colors cursor-pointer disabled:opacity-50 border border-primary/30 border-dashed"
             >
               Log &ldquo;{search.trim()}&rdquo; as a new recipe
             </button>

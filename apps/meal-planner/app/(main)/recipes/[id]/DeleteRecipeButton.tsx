@@ -33,7 +33,7 @@ export function DeleteRecipeButton({ id }: { id: string }) {
   return (
     <Button
       variant="outline"
-      className="rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50"
+      className="rounded-xl text-destructive hover:text-destructive/80 hover:bg-destructive/10"
       onClick={() => setConfirming(true)}
     >
       Delete

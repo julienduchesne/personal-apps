@@ -51,7 +51,7 @@ export function TagLimitsEditor({
       {limits.map((limit) => (
         <div
           key={limit.tag}
-          className="flex items-center gap-3 bg-white rounded-xl p-3 border border-amber-200/50"
+          className="flex items-center gap-3 bg-card rounded-xl p-3 border border-border"
         >
           <TagBadge tag={limit.tag} />
           <span className="text-sm text-muted-foreground">max</span>
@@ -68,7 +68,7 @@ export function TagLimitsEditor({
             variant="ghost"
             size="sm"
             onClick={() => handleRemove(limit.tag)}
-            className="ml-auto text-red-400 hover:text-red-600"
+            className="ml-auto text-destructive/70 hover:text-destructive"
           >
             Remove
           </Button>
@@ -110,7 +110,7 @@ export function TagLimitsEditor({
           onChange={(e) => setNewMax(Number(e.target.value))}
           className="w-16 rounded-xl text-center"
         />
-        <Button onClick={handleAdd} className="rounded-xl bg-orange-600 hover:bg-orange-700">
+        <Button onClick={handleAdd} className="rounded-xl bg-primary hover:bg-primary/90">
           Add Limit
         </Button>
       </div>
