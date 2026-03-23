@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#16a34a"/>
+  <!-- Fork -->
+  <g fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Fork -->
+    <path d="M22 14v10c0 4 2 6 5 7v19" />
+    <line x1="19" y1="14" x2="19" y2="24"/>
+    <line x1="25" y1="14" x2="25" y2="24"/>
+    <!-- Knife -->
+    <path d="M40 14c-4 0-6 4-6 10 0 4 2 6 5 7v19"/>
+    <line x1="40" y1="14" x2="40" y2="50"/>
+  </g>
+</svg>
