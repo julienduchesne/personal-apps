@@ -4,9 +4,21 @@ import { useState, useRef, useEffect } from "react";
 
 export interface AppConfig {
   name: string;
-  emoji: string;
+  icon: string;
   url: string;
   active?: boolean;
+}
+
+function AppIcon({ src, size = 20 }: { src: string; size?: number }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      style={{ borderRadius: 4, flexShrink: 0 }}
+    />
+  );
 }
 
 export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
@@ -54,7 +66,7 @@ export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
           (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
         }
       >
-        <span style={{ fontSize: "1.125rem" }}>{current?.emoji ?? "🔀"}</span>
+        {current ? <AppIcon src={current.icon} /> : null}
         <span style={{ flex: 1, textAlign: "left" }}>
           {current?.name ?? "Switch app"}
         </span>
@@ -70,7 +82,9 @@ export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
             top: "calc(100% + 0.25rem)",
             left: 0,
             right: 0,
-            background: "#1a1a2e",
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             border: "1px solid rgba(255,255,255,0.15)",
             borderRadius: "0.5rem",
             overflow: "hidden",
@@ -105,7 +119,7 @@ export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
                   : "transparent")
               }
             >
-              <span style={{ fontSize: "1.125rem" }}>{app.emoji}</span>
+              <AppIcon src={app.icon} />
               <span style={{ flex: 1 }}>{app.name}</span>
               {app.active && (
                 <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>✓</span>

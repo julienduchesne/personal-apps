@@ -5,8 +5,8 @@ import { Link } from "./Link";
 import { AppSwitcher } from "@repo/ui";
 
 const APPS = [
-  { name: "Meal Planner", emoji: "🍽️", url: "/", active: true },
-  { name: "Guitar Practice", emoji: "🎸", url: process.env.NEXT_PUBLIC_GUITAR_URL ?? "http://localhost:3001" },
+  { name: "Meal Planner", icon: "/icon.svg", url: "/", active: true },
+  { name: "Guitar Practice", icon: `${process.env.NEXT_PUBLIC_GUITAR_URL ?? "http://localhost:3001"}/icon.svg`, url: process.env.NEXT_PUBLIC_GUITAR_URL ?? "http://localhost:3001" },
 ];
 
 const NAV_ITEMS = [

@@ -8,8 +8,8 @@ import styles from "./Sidebar.module.css";
 import type { PlaytimeSession } from "@/lib/types";
 
 const APPS = [
-  { name: "Meal Planner", emoji: "🍽️", url: process.env.NEXT_PUBLIC_MEALS_URL ?? "http://localhost:3000" },
-  { name: "Guitar Practice", emoji: "🎸", url: "/", active: true },
+  { name: "Meal Planner", icon: `${process.env.NEXT_PUBLIC_MEALS_URL ?? "http://localhost:3000"}/icon.svg`, url: process.env.NEXT_PUBLIC_MEALS_URL ?? "http://localhost:3000" },
+  { name: "Guitar Practice", icon: "/icon.svg", url: "/", active: true },
 ];
 
 type NavItem = { href: string; label: string; exact?: boolean; sub?: boolean };
