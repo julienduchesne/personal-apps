@@ -1,4 +1,4 @@
-import { Recipe, DaySchedule, TagLimit, MealLog, Suggestion } from "./types";
+import { Recipe, DaySchedule, TagLimit, MealLog, Suggestion, getEffectivePrepTime } from "./types";
 import { getDayOfWeek, daysBetween, today } from "./date-utils";
 
 /**
@@ -35,8 +35,8 @@ export function generateSuggestions(
   // If no cooking time, no suggestions
   if (cookingTime === 0) return [];
 
-  // Step 1: Filter by time budget
-  let candidates = allRecipes.filter((r) => r.prepTime <= cookingTime);
+  // Step 1: Filter by time budget (using logged cook times when available)
+  let candidates = allRecipes.filter((r) => getEffectivePrepTime(r) <= cookingTime);
 
   // Step 2: Filter by tag limits
   const weekTagCounts = new Map<string, number>();
@@ -101,8 +101,9 @@ export function generateSuggestions(
     }
 
     // Time fit score (0-15)
-    const timeFitScore = cookingTime > 0 ? 15 * (recipe.prepTime / cookingTime) : 0;
-    reasons.push(`Fits ${cookingTime}min budget (${recipe.prepTime}min)`);
+    const effectiveTime = getEffectivePrepTime(recipe);
+    const timeFitScore = cookingTime > 0 ? 15 * (effectiveTime / cookingTime) : 0;
+    reasons.push(`Fits ${cookingTime}min budget (${effectiveTime}min)`);
 
     // Pick rate score (0-20): timesChosen / daysInRotation
     const daysInRotation = Math.max(1, daysBetween(recipe.createdAt.slice(0, 10), todayStr));

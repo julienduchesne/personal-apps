@@ -117,6 +117,7 @@ export function DayCard({
                 recipeId: meal.recipeId,
                 freeText: meal.freeText,
                 recipeName: mealRecipe?.name,
+                recipe: mealRecipe,
               }
             : undefined
         }

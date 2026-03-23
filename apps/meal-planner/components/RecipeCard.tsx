@@ -1,6 +1,6 @@
 "use client";
 
-import { Recipe } from "@/lib/types";
+import { Recipe, getEffectivePrepTime } from "@/lib/types";
 import { PickRateInfo } from "@/app/actions/meals";
 import { TagBadge } from "./TagBadge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,7 +20,7 @@ export function RecipeCard({ recipe, pickRate }: { recipe: Recipe; pickRate?: Pi
                 </span>
               )}
               <span className="text-xs text-secondary-foreground whitespace-nowrap flex items-center gap-1">
-                ⏱️ {recipe.prepTime}m
+                ⏱️ {getEffectivePrepTime(recipe)}m
               </span>
             </div>
           </div>

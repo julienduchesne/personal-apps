@@ -104,6 +104,22 @@ export async function deleteRecipe(id: string): Promise<void> {
   revalidatePath("/week");
 }
 
+export async function logCookTime(
+  recipeId: string,
+  minutes: number
+): Promise<void> {
+  const recipes = await getRecipes();
+  const idx = recipes.findIndex((r) => r.id === recipeId);
+  if (idx === -1) return;
+  if (!recipes[idx].cookTimeLogs) {
+    recipes[idx].cookTimeLogs = [];
+  }
+  recipes[idx].cookTimeLogs!.push(minutes);
+  await writeJson(FILE, recipes);
+  revalidatePath("/recipes");
+  revalidatePath("/week");
+}
+
 export async function getAllTags(): Promise<string[]> {
   const recipes = await getRecipes();
   const tagSet = new Set<string>();

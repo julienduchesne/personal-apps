@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { TagBadge } from "./TagBadge";
-import { Recipe } from "@/lib/types";
+import { Recipe, getEffectivePrepTime } from "@/lib/types";
 import { createRecipe, updateRecipe, uploadRecipePdf, deleteRecipePdf } from "@/app/actions/recipes";
 
 interface Props {
@@ -117,6 +117,11 @@ export function RecipeForm({ recipe, allTags = [] }: Props) {
           onChange={(e) => setPrepTime(Number(e.target.value))}
           className="rounded-xl w-32"
         />
+        {recipe?.cookTimeLogs && recipe.cookTimeLogs.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Effective time: {getEffectivePrepTime(recipe)}m (avg of {recipe.cookTimeLogs.length} logged cook time{recipe.cookTimeLogs.length > 1 ? "s" : ""})
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

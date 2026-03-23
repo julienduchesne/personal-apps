@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Recipe, Suggestion } from "@/lib/types";
+import { Recipe, Suggestion, getEffectivePrepTime } from "@/lib/types";
 import { logMeal, logAdHocMeal, deleteMealLog } from "@/app/actions/meals";
+import { logCookTime } from "@/app/actions/recipes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagBadge } from "./TagBadge";
@@ -19,7 +20,7 @@ interface Props {
   dateLabel: string;
   suggestions: Suggestion[];
   allRecipes: Recipe[];
-  currentMeal?: { recipeId: string | null; freeText: string | null; recipeName?: string };
+  currentMeal?: { recipeId: string | null; freeText: string | null; recipeName?: string; recipe?: Recipe };
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -37,6 +38,8 @@ export function SuggestionPicker({
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
+  const [cookTimeInput, setCookTimeInput] = useState("");
+  const [cookTimeLogged, setCookTimeLogged] = useState(false);
 
   function handlePickRecipe(recipeId: string) {
     startTransition(async () => {
@@ -59,7 +62,19 @@ export function SuggestionPicker({
   function handleClear() {
     startTransition(async () => {
       await deleteMealLog(date);
+      setCookTimeLogged(false);
+      setCookTimeInput("");
       onOpenChange(false);
+      router.refresh();
+    });
+  }
+
+  function handleLogCookTime() {
+    const minutes = Number(cookTimeInput);
+    if (!minutes || minutes <= 0 || !currentMeal?.recipeId) return;
+    startTransition(async () => {
+      await logCookTime(currentMeal.recipeId!, minutes);
+      setCookTimeLogged(true);
       router.refresh();
     });
   }
@@ -69,14 +84,17 @@ export function SuggestionPicker({
     : [];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => {
+        if (!v) { setCookTimeLogged(false); setCookTimeInput(""); }
+        onOpenChange(v);
+      }}>
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-foreground">{dateLabel}</DialogTitle>
         </DialogHeader>
 
         {currentMeal && (
-          <div className="bg-secondary rounded-xl p-3 mb-2 border border-secondary-foreground/20">
+          <div className="bg-secondary rounded-xl p-3 mb-2 border border-secondary-foreground/20 space-y-2">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-secondary-foreground uppercase tracking-wide font-medium">Currently logged</p>
@@ -94,6 +112,45 @@ export function SuggestionPicker({
                 Clear
               </Button>
             </div>
+            {currentMeal.recipe && (
+              <div className="pt-1 border-t border-secondary-foreground/10">
+                <p className="text-xs text-secondary-foreground mb-1">
+                  Expected: {getEffectivePrepTime(currentMeal.recipe)}m
+                  {currentMeal.recipe.cookTimeLogs && currentMeal.recipe.cookTimeLogs.length > 0
+                    ? ` (avg of ${currentMeal.recipe.cookTimeLogs.length} log${currentMeal.recipe.cookTimeLogs.length > 1 ? "s" : ""})`
+                    : " (seed time)"}
+                </p>
+                {cookTimeLogged ? (
+                  <p className="text-xs text-primary font-medium">Cook time logged!</p>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={cookTimeInput}
+                      onChange={(e) => setCookTimeInput(e.target.value)}
+                      placeholder="Actual minutes"
+                      className="rounded-xl w-32 h-8 text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleLogCookTime();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleLogCookTime}
+                      disabled={pending || !cookTimeInput}
+                      className="rounded-xl h-8 text-xs"
+                    >
+                      Log time
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -111,7 +168,7 @@ export function SuggestionPicker({
                   <div className="min-w-0">
                     <p className="font-medium text-foreground truncate">{s.recipe.name}</p>
                     <p className="text-xs text-secondary-foreground mt-0.5">
-                      ⏱️ {s.recipe.prepTime}m
+                      ⏱️ {getEffectivePrepTime(s.recipe)}m
                     </p>
                   </div>
                   <span className="text-xs text-primary/70 font-medium shrink-0">
@@ -175,7 +232,7 @@ export function SuggestionPicker({
                   className="w-full text-left text-sm py-1.5 px-2 rounded-lg hover:bg-accent transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {r.name}
-                  <span className="text-xs text-secondary-foreground ml-2">⏱️ {r.prepTime}m</span>
+                  <span className="text-xs text-secondary-foreground ml-2">⏱️ {getEffectivePrepTime(r)}m</span>
                 </button>
               ))}
             </div>

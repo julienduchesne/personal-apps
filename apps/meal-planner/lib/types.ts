@@ -3,11 +3,19 @@ export interface Recipe {
   name: string;
   description: string;
   prepTime: number;
+  cookTimeLogs?: number[]; // logged actual cook times in minutes
   ingredients: string;
   tags: string[];
   sourceUrl?: string; // link to recipe online
   sourcePdfKey?: string; // S3 key for uploaded PDF
   createdAt: string;
+}
+
+/** Returns average of logged cook times, or prepTime as fallback. */
+export function getEffectivePrepTime(recipe: Recipe): number {
+  const logs = recipe.cookTimeLogs;
+  if (!logs || logs.length === 0) return recipe.prepTime;
+  return Math.round(logs.reduce((sum, t) => sum + t, 0) / logs.length);
 }
 
 export interface DaySchedule {
