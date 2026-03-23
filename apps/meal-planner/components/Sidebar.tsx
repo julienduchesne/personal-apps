@@ -44,14 +44,6 @@ export function Sidebar({
         ${isOpen ? "max-md:translate-x-0 max-md:shadow-lg" : "max-md:-translate-x-full"}
       `}
     >
-      <button
-        className="hidden max-md:flex items-center justify-center absolute top-[var(--space-3)] right-[var(--space-3)] w-8 h-8 bg-transparent border-none text-xl text-muted-foreground cursor-pointer rounded-[var(--radius-sm)] hover:bg-accent hover:text-foreground"
-        onClick={onClose}
-        aria-label="Close navigation"
-      >
-        ✕
-      </button>
-
       <div className="px-[var(--space-3)] mb-[var(--space-4)]" style={switcherStyle}>
         <AppSwitcher apps={APPS} />
       </div>
