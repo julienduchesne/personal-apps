@@ -25,25 +25,11 @@ const switcherStyle = {
   "--switcher-shadow": "var(--shadow-md)",
 } as React.CSSProperties;
 
-export function Sidebar({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-}) {
+export function SidebarContent({ onClose }: { onClose: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside
-      className={`
-        w-[var(--sidebar-width)] shrink-0 bg-sidebar border-r border-border
-        p-[var(--space-6)] pr-0 flex flex-col sticky top-0 h-screen overflow-y-auto
-        max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-[200]
-        max-md:w-64 max-md:shadow-none max-md:transition-transform max-md:duration-[var(--transition-normal)]
-        ${isOpen ? "max-md:translate-x-0 max-md:shadow-lg" : "max-md:-translate-x-full"}
-      `}
-    >
+    <>
       <div className="px-[var(--space-3)] mb-[var(--space-4)]" style={switcherStyle}>
         <AppSwitcher apps={APPS} />
       </div>
@@ -68,6 +54,6 @@ export function Sidebar({
           );
         })}
       </nav>
-    </aside>
+    </>
   );
 }

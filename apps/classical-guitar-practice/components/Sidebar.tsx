@@ -21,30 +21,17 @@ const nav: NavItem[] = [
   { href: "/playtime", label: "Playtime" },
 ];
 
-export function Sidebar({
-  isOpen,
+export function SidebarContent({
   onClose,
   activeSession,
 }: {
-  isOpen: boolean;
   onClose: () => void;
   activeSession: PlaytimeSession | null;
 }) {
   const pathname = usePathname();
 
   return (
-    <nav
-      aria-label="Main"
-      className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ""}`}
-    >
-      <button
-        className={styles.closeButton}
-        onClick={onClose}
-        aria-label="Close navigation"
-      >
-        ✕
-      </button>
-
+    <>
       <div className={styles.appSwitcher}>
         <AppSwitcher apps={APPS} />
       </div>
@@ -72,6 +59,6 @@ export function Sidebar({
       <div className={styles.playtimeSection}>
         <PlaytimeButton activeSession={activeSession ?? null} />
       </div>
-    </nav>
+    </>
   );
 }
