@@ -30,6 +30,13 @@
   padding: 0 var(--space-3);
   margin-bottom: var(--space-4);
   color: var(--color-text-secondary);
+  --switcher-border: var(--color-border);
+  --switcher-text: var(--color-text);
+  --switcher-bg-hover: var(--color-primary-light);
+  --switcher-dropdown-bg: var(--color-surface);
+  --switcher-item-hover: var(--color-primary-light);
+  --switcher-item-active: rgba(139, 94, 60, 0.06);
+  --switcher-shadow: var(--shadow-md);
 }
 
 .navList {

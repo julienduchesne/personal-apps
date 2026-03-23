@@ -21,6 +21,17 @@ function AppIcon({ src, size = 20 }: { src: string; size?: number }) {
   );
 }
 
+/**
+ * Theme via CSS custom properties on a parent element:
+ *   --switcher-bg          Button background (default: transparent)
+ *   --switcher-bg-hover    Button hover background
+ *   --switcher-border      Border color
+ *   --switcher-text        Text color
+ *   --switcher-dropdown-bg Dropdown background
+ *   --switcher-item-hover  Dropdown item hover
+ *   --switcher-item-active Active item background
+ *   --switcher-shadow      Dropdown shadow
+ */
 export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -51,26 +62,30 @@ export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
           gap: "0.5rem",
           padding: "0.375rem 0.625rem",
           borderRadius: "0.5rem",
-          border: "1px solid rgba(255,255,255,0.15)",
-          background: "rgba(255,255,255,0.08)",
-          color: "inherit",
+          border: "1px solid var(--switcher-border, rgba(0,0,0,0.12))",
+          background: "var(--switcher-bg, transparent)",
+          color: "var(--switcher-text, inherit)",
           cursor: "pointer",
           fontSize: "0.8125rem",
           width: "100%",
           transition: "background 0.15s",
         }}
         onMouseEnter={(e) =>
-          (e.currentTarget.style.background = "rgba(255,255,255,0.15)")
+          (e.currentTarget.style.background =
+            getComputedStyle(e.currentTarget).getPropertyValue("--switcher-bg-hover").trim() ||
+            "rgba(0,0,0,0.06)")
         }
         onMouseLeave={(e) =>
-          (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
+          (e.currentTarget.style.background =
+            getComputedStyle(e.currentTarget).getPropertyValue("--switcher-bg").trim() ||
+            "transparent")
         }
       >
         {current ? <AppIcon src={current.icon} /> : null}
-        <span style={{ flex: 1, textAlign: "left" }}>
+        <span style={{ flex: 1, textAlign: "left", fontWeight: 500 }}>
           {current?.name ?? "Switch app"}
         </span>
-        <span style={{ fontSize: "0.625rem", opacity: 0.6 }}>
+        <span style={{ fontSize: "0.625rem", opacity: 0.5 }}>
           {open ? "▲" : "▼"}
         </span>
       </button>
@@ -82,14 +97,12 @@ export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
             top: "calc(100% + 0.25rem)",
             left: 0,
             right: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            border: "1px solid rgba(255,255,255,0.15)",
+            background: "var(--switcher-dropdown-bg, #fff)",
+            border: "1px solid var(--switcher-border, rgba(0,0,0,0.12))",
             borderRadius: "0.5rem",
             overflow: "hidden",
             zIndex: 50,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            boxShadow: "var(--switcher-shadow, 0 4px 12px rgba(0,0,0,0.12))",
           }}
         >
           {apps.map((app) => (
@@ -102,27 +115,30 @@ export function AppSwitcher({ apps }: { apps: AppConfig[] }) {
                 alignItems: "center",
                 gap: "0.5rem",
                 padding: "0.5rem 0.625rem",
-                color: "inherit",
+                color: "var(--switcher-text, inherit)",
                 textDecoration: "none",
                 fontSize: "0.8125rem",
                 background: app.active
-                  ? "rgba(255,255,255,0.1)"
+                  ? "var(--switcher-item-active, rgba(0,0,0,0.05))"
                   : "transparent",
                 transition: "background 0.15s",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "rgba(255,255,255,0.18)")
+                (e.currentTarget.style.background =
+                  getComputedStyle(e.currentTarget).getPropertyValue("--switcher-item-hover").trim() ||
+                  "rgba(0,0,0,0.08)")
               }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = app.active
-                  ? "rgba(255,255,255,0.1)"
+                  ? getComputedStyle(e.currentTarget).getPropertyValue("--switcher-item-active").trim() ||
+                    "rgba(0,0,0,0.05)"
                   : "transparent")
               }
             >
               <AppIcon src={app.icon} />
               <span style={{ flex: 1 }}>{app.name}</span>
               {app.active && (
-                <span style={{ fontSize: "0.75rem", opacity: 0.6 }}>✓</span>
+                <span style={{ fontSize: "0.75rem", opacity: 0.5 }}>✓</span>
               )}
             </a>
           ))}

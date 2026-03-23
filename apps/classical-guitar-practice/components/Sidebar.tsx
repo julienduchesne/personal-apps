@@ -3,13 +3,13 @@
 import { Link } from "@/components/Link";
 import { usePathname } from "next/navigation";
 import { PlaytimeButton } from "@/components/PlaytimeButton";
-import { AppSwitcher } from "@repo/ui";
+import { AppSwitcher, APP_ICONS } from "@repo/ui";
 import styles from "./Sidebar.module.css";
 import type { PlaytimeSession } from "@/lib/types";
 
 const APPS = [
-  { name: "Meal Planner", icon: `${process.env.NEXT_PUBLIC_MEALS_URL ?? "http://localhost:3000"}/icon.svg`, url: process.env.NEXT_PUBLIC_MEALS_URL ?? "http://localhost:3000" },
-  { name: "Guitar Practice", icon: "/icon.svg", url: "/", active: true },
+  { name: "Meal Planner", icon: APP_ICONS.mealPlanner, url: process.env.NEXT_PUBLIC_MEALS_URL ?? "http://localhost:3000" },
+  { name: "Guitar Practice", icon: APP_ICONS.guitarPractice, url: "/", active: true },
 ];
 
 type NavItem = { href: string; label: string; exact?: boolean; sub?: boolean };

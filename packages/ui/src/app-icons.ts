@@ -1,0 +1,7 @@
+/** Inline data-URI icons for the app switcher (avoids cross-origin issues) */
+export const APP_ICONS = {
+  mealPlanner:
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2316a34a'/%3E%3Cg fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 14v10c0 4 2 6 5 7v19'/%3E%3Cline x1='19' y1='14' x2='19' y2='24'/%3E%3Cline x1='25' y1='14' x2='25' y2='24'/%3E%3Cpath d='M40 14c-4 0-6 4-6 10 0 4 2 6 5 7v19'/%3E%3Cline x1='40' y1='14' x2='40' y2='50'/%3E%3C/g%3E%3C/svg%3E",
+  guitarPractice:
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c3aed'/%3E%3Cg fill='none' stroke='white' stroke-width='2.5'%3E%3Crect x='29' y='8' width='6' height='22' rx='1' fill='white' opacity='0.9'/%3E%3Cline x1='29' y1='14' x2='35' y2='14' stroke='%237c3aed' stroke-width='1.5'/%3E%3Cline x1='29' y1='19' x2='35' y2='19' stroke='%237c3aed' stroke-width='1.5'/%3E%3Cline x1='29' y1='24' x2='35' y2='24' stroke='%237c3aed' stroke-width='1.5'/%3E%3Cellipse cx='32' cy='43' rx='14' ry='13' fill='white' opacity='0.9'/%3E%3Ccircle cx='32' cy='43' r='5' fill='%237c3aed'/%3E%3Cline x1='26' y1='50' x2='38' y2='50' stroke='%237c3aed' stroke-width='2'/%3E%3Cline x1='31' y1='8' x2='31' y2='50' stroke='%237c3aed' stroke-width='0.7'/%3E%3Cline x1='33' y1='8' x2='33' y2='50' stroke='%237c3aed' stroke-width='0.7'/%3E%3C/g%3E%3C/svg%3E",
+} as const;
