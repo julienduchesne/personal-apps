@@ -45,6 +45,7 @@ packages/
 - Prefer React data bindings and safe URLs.
 - No interactive git commands.
 - **Always run `npm run build` from the root before committing or pushing** to catch type errors and build failures across all apps.
+- **Always run each app's tests and Playwright suites before committing or pushing.** Check each app's `CLAUDE.md` for the exact commands. Fix any failures — never skip or ignore them.
 
 ## Testing
 

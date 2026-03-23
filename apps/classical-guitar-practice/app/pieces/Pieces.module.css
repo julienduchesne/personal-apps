@@ -237,9 +237,20 @@
 }
 
 .editLink {
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--color-link);
+  background: #e8f0fe;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.editLink:hover {
+  background: var(--color-link);
+  color: white;
 }
 
 .editingBadge {
@@ -344,15 +355,20 @@
 }
 
 .sheetMusicLink {
+  padding: var(--space-2) var(--space-3);
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--color-link);
+  background: #e8f0fe;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .sheetMusicLink:hover {
-  color: var(--color-link-hover);
-  text-decoration: underline;
+  background: var(--color-link);
+  color: white;
 }
 
 .sheetMusicUpload {

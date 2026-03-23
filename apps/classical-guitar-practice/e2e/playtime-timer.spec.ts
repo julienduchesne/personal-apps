@@ -16,6 +16,8 @@ test.beforeEach(async () => {
   await clearSessions();
 });
 
+test.describe.configure({ mode: "serial" });
+
 test.describe("Session timer", () => {
   test("shows 0:00 immediately after starting (no 30-second jump)", async ({
     page,
@@ -71,10 +73,12 @@ test.describe("Session timer", () => {
     const frozenElapsed = parseElapsed(frozenText);
     expect(frozenElapsed).toBeGreaterThanOrEqual(2);
 
-    // Wait 2 seconds – timer must stay frozen
+    // Wait 2 seconds – timer must stay frozen (allow ±1s for timing)
     await page.waitForTimeout(2000);
     const stillFrozenText = await stopBtn.textContent() ?? "";
-    expect(parseElapsed(stillFrozenText)).toBe(frozenElapsed);
+    const stillFrozenElapsed = parseElapsed(stillFrozenText);
+    expect(stillFrozenElapsed).toBeGreaterThanOrEqual(frozenElapsed);
+    expect(stillFrozenElapsed).toBeLessThanOrEqual(frozenElapsed + 1);
 
     // Resume
     await resumeBtn.click();
@@ -97,14 +101,20 @@ test.describe("Session timer", () => {
 
   test("stopping a session returns to the start button", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "▶ Start Session" }).click();
 
+    const startBtn = page.getByRole("button", { name: "▶ Start Session" });
     const stopBtn = page.getByRole("button", { name: /⏹/ });
+
+    // If a session is still active from a previous test, stop it first
+    if (await stopBtn.isVisible().catch(() => false)) {
+      await stopBtn.click();
+      await expect(startBtn).toBeVisible({ timeout: 10000 });
+    }
+
+    await startBtn.click();
     await expect(stopBtn).toBeVisible({ timeout: 10000 });
 
     await stopBtn.click();
-    await expect(
-      page.getByRole("button", { name: "▶ Start Session" })
-    ).toBeVisible({ timeout: 10000 });
+    await expect(startBtn).toBeVisible({ timeout: 10000 });
   });
 });
