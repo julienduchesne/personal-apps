@@ -12,6 +12,7 @@ const APPS = [
 const NAV_ITEMS = [
   { href: "/week", label: "Week", emoji: "📅" },
   { href: "/recipes", label: "Recipes", emoji: "📖" },
+  { href: "/groceries", label: "Groceries", emoji: "🛒" },
   { href: "/settings", label: "Settings", emoji: "⚙️" },
 ];
 
