@@ -1,0 +1,327 @@
+.section {
+  margin-bottom: var(--space-8);
+}
+
+.sectionTitle {
+  margin-bottom: var(--space-4);
+}
+
+.empty {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.entry {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  box-shadow: var(--shadow-card);
+}
+
+.entryActive {
+  border-color: var(--color-success);
+  background: var(--color-success-light);
+}
+
+.entryHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.times {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.timeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.9375rem;
+}
+
+.timeLabel {
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 3.5rem;
+}
+
+.timeValue {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.duration {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-top: var(--space-1);
+}
+
+.badge {
+  display: inline-block;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-success);
+  background: white;
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-full);
+  margin-top: var(--space-1);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.editButton {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+
+.editButton:hover {
+  background: var(--color-accent-light);
+  text-decoration: none;
+}
+
+.deleteButton {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-danger);
+  background: var(--color-danger-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: white;
+}
+
+.deleteButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Edit form */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 28rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.formActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.saveButton {
+  padding: var(--space-2) var(--space-6);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: white;
+  background: var(--color-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.saveButton:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cancelLink {
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.cancelLink:hover {
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
+/* Pause time inputs */
+.pauseInputs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pauseInputs input {
+  width: 5rem;
+}
+
+.pauseSep {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+/* Sessions section spacing */
+.sessionsSection {
+  margin-top: var(--space-6);
+}
+
+/* Calendar */
+.calendar {
+  margin-bottom: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  box-shadow: var(--shadow-card);
+}
+
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.calendarMonth {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+}
+
+.calendarNav {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.calendarNav:hover {
+  background: var(--color-border-light);
+  color: var(--color-text);
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendarDayHeader {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding-bottom: var(--space-2);
+}
+
+.calendarCell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  min-height: 3rem;
+}
+
+.calendarToday .calendarDayNum {
+  background: var(--color-primary);
+  color: white;
+  border-radius: var(--radius-full);
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendarDayNum {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text);
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendarTime {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-top: 2px;
+  text-align: center;
+}
+
+/* Target row */
+.calendarTarget {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.calendarTargetLabel {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.calendarTargetInput {
+  width: 4rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.calendarTargetUnit {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
