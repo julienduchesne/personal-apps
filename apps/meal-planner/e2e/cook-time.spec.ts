@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
+import { clearData } from "./minio-global-setup";
 
 test.describe("Cook time logging", () => {
   test.beforeEach(async ({ page }) => {
+    await clearData();
     // Create a test recipe
     await page.goto("/recipes/new");
     await page.getByLabel("Recipe Name").fill("Test Pasta");
@@ -22,7 +24,7 @@ test.describe("Cook time logging", () => {
     // Check that the suggestion shows the seed prep time
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByText("30m")).toBeVisible();
+    await expect(dialog.getByText("30m").first()).toBeVisible();
   });
 
   test("can log cook time for a recipe-based meal", async ({ page }) => {
@@ -46,7 +48,7 @@ test.describe("Cook time logging", () => {
 
     // Should see "Currently logged" with the recipe
     await expect(dialog.getByText("Currently logged")).toBeVisible();
-    await expect(dialog.getByText("Test Pasta")).toBeVisible();
+    await expect(dialog.getByText("Test Pasta").first()).toBeVisible();
 
     // Should see cook time input with "Expected: 30m (seed time)"
     await expect(dialog.getByText("Expected: 30m")).toBeVisible();
@@ -72,7 +74,9 @@ test.describe("Cook time logging", () => {
     await dialog.getByText("Test Pasta").first().click();
 
     // Log first cook time
+    await expect(dialog).not.toBeVisible();
     await dayButton.click();
+    await expect(dialog).toBeVisible();
     await dialog.getByPlaceholder("Actual minutes").fill("20");
     await dialog.getByRole("button", { name: "Log time" }).click();
     await expect(dialog.getByText("Cook time logged!")).toBeVisible();

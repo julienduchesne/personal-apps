@@ -4,3 +4,6 @@ dist
 .turbo
 .env.local
 .env*.local
+test-results
+playwright-report
+.auth-state.json
