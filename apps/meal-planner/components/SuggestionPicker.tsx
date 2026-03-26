@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Recipe, Suggestion, getEffectivePrepTime } from "@/lib/types";
+import { Recipe, Suggestion, Snooze, getEffectivePrepTime } from "@/lib/types";
 import { logMeal, logAdHocMeal, deleteMealLog } from "@/app/actions/meals";
+import { snoozeRecipe, unsnoozeRecipe } from "@/app/actions/snoozes";
 import { logCookTime } from "@/app/actions/recipes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,11 +16,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+function getNextSunday(): string {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun
+  const diff = day === 0 ? 7 : 7 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
 interface Props {
   date: string;
   dateLabel: string;
   suggestions: Suggestion[];
   allRecipes: Recipe[];
+  snoozes: Snooze[];
   currentMeal?: { recipeId: string | null; freeText: string | null; recipeName?: string; recipe?: Recipe };
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -30,6 +40,7 @@ export function SuggestionPicker({
   dateLabel,
   suggestions,
   allRecipes,
+  snoozes,
   currentMeal,
   open,
   onOpenChange,
@@ -40,6 +51,9 @@ export function SuggestionPicker({
   const [search, setSearch] = useState("");
   const [cookTimeInput, setCookTimeInput] = useState("");
   const [cookTimeLogged, setCookTimeLogged] = useState(false);
+  const [snoozing, setSnoozing] = useState<string | null>(null); // recipeId being snoozed
+  const [snoozeUntil, setSnoozeUntil] = useState(getNextSunday);
+  const [snoozeReason, setSnoozeReason] = useState("Missing ingredients");
 
   function handlePickRecipe(recipeId: string) {
     startTransition(async () => {
@@ -79,13 +93,43 @@ export function SuggestionPicker({
     });
   }
 
+  function handleLeftovers() {
+    startTransition(async () => {
+      await logMeal(date, null, "Leftovers");
+      onOpenChange(false);
+      router.refresh();
+    });
+  }
+
+  function handleSnooze(recipeId: string) {
+    startTransition(async () => {
+      await snoozeRecipe(recipeId, snoozeUntil, snoozeReason);
+      setSnoozing(null);
+      setSnoozeUntil(getNextSunday());
+      setSnoozeReason("Missing ingredients");
+      router.refresh();
+    });
+  }
+
+  function handleUnsnooze(recipeId: string) {
+    startTransition(async () => {
+      await unsnoozeRecipe(recipeId);
+      router.refresh();
+    });
+  }
+
   const filteredRecipes = search
     ? allRecipes.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()))
     : [];
 
+  const snoozedWithNames = snoozes.map((s) => ({
+    ...s,
+    recipeName: allRecipes.find((r) => r.id === s.recipeId)?.name ?? "Unknown",
+  }));
+
   return (
     <Dialog open={open} onOpenChange={(v) => {
-        if (!v) { setCookTimeLogged(false); setCookTimeInput(""); }
+        if (!v) { setCookTimeLogged(false); setCookTimeInput(""); setSnoozing(null); }
         onOpenChange(v);
       }}>
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto rounded-2xl">
@@ -154,38 +198,138 @@ export function SuggestionPicker({
           </div>
         )}
 
+        {!currentMeal && (
+          <Button
+            variant="outline"
+            onClick={handleLeftovers}
+            disabled={pending}
+            className="w-full rounded-xl border-dashed"
+          >
+            🍲 Leftovers
+          </Button>
+        )}
+
         {suggestions.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-primary">Suggestions</p>
             {suggestions.map((s) => (
-              <button
-                key={s.recipe.id}
-                onClick={() => handlePickRecipe(s.recipe.id)}
-                disabled={pending}
-                className="w-full text-left bg-card border border-border hover:border-primary/40 hover:shadow-sm rounded-xl p-3 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium text-foreground truncate">{s.recipe.name}</p>
-                    <p className="text-xs text-secondary-foreground mt-0.5">
-                      ⏱️ {getEffectivePrepTime(s.recipe)}m
+              <div key={s.recipe.id} className="space-y-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handlePickRecipe(s.recipe.id)}
+                    disabled={pending}
+                    className="flex-1 text-left bg-card border border-border hover:border-primary/40 hover:shadow-sm rounded-xl p-3 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{s.recipe.name}</p>
+                        <p className="text-xs text-secondary-foreground mt-0.5">
+                          ⏱️ {getEffectivePrepTime(s.recipe)}m
+                        </p>
+                      </div>
+                      <span className="text-xs text-primary/70 font-medium shrink-0">
+                        {Math.round(s.score)}pts
+                      </span>
+                    </div>
+                    {s.recipe.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {s.recipe.tags.map((tag) => (
+                          <TagBadge key={tag} tag={tag} />
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      {s.reasons.slice(0, 2).join(" · ")}
                     </p>
-                  </div>
-                  <span className="text-xs text-primary/70 font-medium shrink-0">
-                    {Math.round(s.score)}pts
-                  </span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSnoozing(snoozing === s.recipe.id ? null : s.recipe.id);
+                    }}
+                    disabled={pending}
+                    className="shrink-0 self-start text-muted-foreground hover:text-foreground"
+                    title="Snooze this recipe"
+                  >
+                    💤
+                  </Button>
                 </div>
-                {s.recipe.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {s.recipe.tags.map((tag) => (
-                      <TagBadge key={tag} tag={tag} />
-                    ))}
+                {snoozing === s.recipe.id && (
+                  <div className="ml-2 bg-muted rounded-xl p-3 space-y-2 border border-border">
+                    <p className="text-xs font-medium text-secondary-foreground">Snooze &ldquo;{s.recipe.name}&rdquo;</p>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-muted-foreground shrink-0" htmlFor={`snooze-until-${s.recipe.id}`}>Until</label>
+                        <Input
+                          id={`snooze-until-${s.recipe.id}`}
+                          type="date"
+                          value={snoozeUntil}
+                          onChange={(e) => setSnoozeUntil(e.target.value)}
+                          className="rounded-xl h-8 text-sm"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-muted-foreground shrink-0" htmlFor={`snooze-reason-${s.recipe.id}`}>Reason</label>
+                        <Input
+                          id={`snooze-reason-${s.recipe.id}`}
+                          value={snoozeReason}
+                          onChange={(e) => setSnoozeReason(e.target.value)}
+                          placeholder="Missing ingredients"
+                          className="rounded-xl h-8 text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSnooze(s.recipe.id)}
+                          disabled={pending || !snoozeUntil}
+                          className="rounded-xl h-8 text-xs"
+                        >
+                          Snooze
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSnoozing(null)}
+                          className="rounded-xl h-8 text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {s.reasons.slice(0, 2).join(" · ")}
-                </p>
-              </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {snoozedWithNames.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border">
+            <p className="text-sm font-medium text-muted-foreground">Snoozed</p>
+            {snoozedWithNames.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between bg-muted/50 rounded-xl px-3 py-2 border border-border"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-muted-foreground truncate">{s.recipeName}</p>
+                  <p className="text-xs text-muted-foreground/70">
+                    {s.reason} · until {s.until}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleUnsnooze(s.recipeId)}
+                  disabled={pending}
+                  className="shrink-0 text-xs text-primary hover:text-primary/80"
+                >
+                  Unsnooze
+                </Button>
+              </div>
             ))}
           </div>
         )}

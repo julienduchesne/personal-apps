@@ -7,9 +7,12 @@ export const EXERCISE_CATEGORIES = [
 export type ExerciseCategory = (typeof EXERCISE_CATEGORIES)[number];
 
 export interface Exercise {
+  id: string;
   name: string;
   category: ExerciseCategory;
   focus: string;
+  youtubeUrl?: string;
+  hasSheetMusic?: boolean;
 }
 
 export const PROFICIENCY_LEVELS = [

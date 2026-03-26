@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { getTodayExercises } from "@/app/actions";
 import { Link } from "@/components/Link";
+import { ExerciseSheetMusicControls } from "../ExerciseSheetMusicControls";
 import { RegenerateButton } from "./RegenerateButton";
 import styles from "./DailyPick.module.css";
 
@@ -27,9 +28,29 @@ export default async function DailyPickPage() {
       </div>
       <ul className={styles.exerciseList}>
         {exercises.map((e) => (
-          <li key={e.name} className={styles.exerciseItem}>
-            <span className={styles.exerciseName}>{e.name}</span>
-            <span className={styles.exerciseFocus}>{e.focus}</span>
+          <li key={e.id} className={styles.exerciseItem}>
+            <div className={styles.exerciseHeader}>
+              <div>
+                <span className={styles.exerciseName}>{e.name}</span>
+                <span className={styles.exerciseFocus}>{e.focus}</span>
+              </div>
+              <span className={styles.exerciseActions}>
+                {e.youtubeUrl && (
+                  <a
+                    href={e.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.youtubeLink}
+                  >
+                    ▶ YouTube
+                  </a>
+                )}
+                <ExerciseSheetMusicControls
+                  exerciseId={e.id}
+                  hasSheetMusic={e.hasSheetMusic ?? false}
+                />
+              </span>
+            </div>
           </li>
         ))}
       </ul>

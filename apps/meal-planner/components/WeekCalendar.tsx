@@ -1,6 +1,6 @@
 "use client";
 
-import { Recipe, MealLog, Suggestion, DaySchedule } from "@/lib/types";
+import { Recipe, MealLog, Suggestion, Snooze, DaySchedule } from "@/lib/types";
 import { getDayOfWeek } from "@/lib/date-utils";
 import { DayCard } from "./DayCard";
 
@@ -10,9 +10,10 @@ interface Props {
   meals: MealLog[];
   suggestions: Record<string, Suggestion[]>;
   allRecipes: Recipe[];
+  snoozes: Snooze[];
 }
 
-export function WeekCalendar({ dates, schedule, meals, suggestions, allRecipes }: Props) {
+export function WeekCalendar({ dates, schedule, meals, suggestions, allRecipes, snoozes }: Props) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
       {dates.map((date) => {
@@ -32,6 +33,7 @@ export function WeekCalendar({ dates, schedule, meals, suggestions, allRecipes }
             mealRecipe={mealRecipe}
             suggestions={suggestions[date] ?? []}
             allRecipes={allRecipes}
+            snoozes={snoozes}
           />
         );
       })}

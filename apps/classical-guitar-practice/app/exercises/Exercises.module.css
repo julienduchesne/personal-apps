@@ -1,6 +1,44 @@
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.pageHeader h1 {
+  margin-bottom: 0;
+}
+
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 1.375rem;
+  font-weight: 300;
+  line-height: 1;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.addButton:hover {
+  background: var(--color-primary);
+  color: white;
+}
+
 .intro {
   color: var(--color-text-secondary);
   margin-bottom: var(--space-6);
+}
+
+.emptyState {
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
 }
 
 .categorySection {
@@ -35,6 +73,14 @@
   border-left: 3px solid var(--color-accent);
 }
 
+.exerciseHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 .exerciseName {
   font-weight: 600;
   color: var(--color-text);
@@ -45,4 +91,213 @@
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   margin-top: var(--space-1);
+}
+
+.exerciseActions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ===== FORMS ===== */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 28rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-card);
+}
+
+.formTitle {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.primaryButton {
+  padding: var(--space-3) var(--space-5);
+  font-size: 1rem;
+  font-weight: 600;
+  color: white;
+  background-color: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  align-self: flex-start;
+}
+
+.primaryButton:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.primaryButton:disabled {
+  background-color: var(--color-border);
+}
+
+.buttonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cancelLink {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+.cancelLink:hover {
+  color: var(--color-text);
+}
+
+.deleteButton {
+  margin-left: auto;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-danger);
+  background: var(--color-danger-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.deleteButton:hover {
+  background: var(--color-danger);
+  color: white;
+}
+
+.deleteButton:disabled {
+  opacity: 0.6;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.editLink {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-link);
+  background: #e8f0fe;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.editLink:hover {
+  background: var(--color-link);
+  color: white;
+}
+
+.youtubeLink {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #c00;
+  background: #fff0f0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.youtubeLink:hover {
+  background: #c00;
+  color: white;
+}
+
+/* ===== SHEET MUSIC ===== */
+.sheetMusicControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.sheetMusicLink {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-link);
+  background: #e8f0fe;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.sheetMusicLink:hover {
+  background: var(--color-link);
+  color: white;
+}
+
+.sheetMusicUpload {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+.sheetMusicUpload:hover {
+  background: var(--color-primary-hover);
+  color: white;
+}
+
+.sheetMusicUpload:disabled {
+  opacity: 0.6;
+}
+
+.sheetMusicDelete {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-danger);
+  background: var(--color-danger-light);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+.sheetMusicDelete:hover {
+  background: var(--color-danger);
+  color: white;
+}
+
+.sheetMusicDelete:disabled {
+  opacity: 0.6;
+}
+
+.sheetMusicError {
+  font-size: 0.75rem;
+  color: var(--color-danger);
+  width: 100%;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 640px) {
+  .exerciseHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .exerciseActions {
+    width: 100%;
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border-light);
+  }
 }

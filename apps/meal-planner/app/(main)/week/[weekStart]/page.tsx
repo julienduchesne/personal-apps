@@ -4,6 +4,7 @@ import { getRecipes } from "@/app/actions/recipes";
 import { getWeeklySchedule } from "@/app/actions/schedule";
 import { getMealLogsForWeek } from "@/app/actions/meals";
 import { getSuggestionsForWeek } from "@/app/actions/suggestions";
+import { getActiveSnoozes } from "@/app/actions/snoozes";
 import { WeekCalendar } from "@/components/WeekCalendar";
 import { Link } from "@/components/Link";
 import { Button } from "@/components/ui/button";
@@ -17,11 +18,12 @@ export default async function WeekDetailPage({
   const { weekStart } = await params;
   const dates = getWeekDates(weekStart);
 
-  const [recipes, schedule, meals, suggestions] = await Promise.all([
+  const [recipes, schedule, meals, suggestions, snoozes] = await Promise.all([
     getRecipes(),
     getWeeklySchedule(),
     getMealLogsForWeek(weekStart),
     getSuggestionsForWeek(weekStart),
+    getActiveSnoozes(),
   ]);
 
   const prevWeek = shiftWeek(weekStart, -1);
@@ -47,6 +49,7 @@ export default async function WeekDetailPage({
         meals={meals}
         suggestions={suggestions}
         allRecipes={recipes}
+        snoozes={snoozes}
       />
     </div>
   );

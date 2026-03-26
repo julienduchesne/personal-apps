@@ -30,16 +30,19 @@ export async function ensureBucket() {
 
 export async function clearSessions() {
   const s3 = makeClient();
-  try {
-    await s3.send(
-      new DeleteObjectCommand({
-        Bucket: BUCKET,
-        Key: "data/playtime-sessions.json",
-      })
-    );
-  } catch {
-    // ignore – file may not exist
-  }
+  const keysToDelete = [
+    "data/playtime-sessions.json",
+    "data/exercises.json",
+  ];
+  await Promise.all(
+    keysToDelete.map(async (Key) => {
+      try {
+        await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key }));
+      } catch {
+        // ignore – file may not exist
+      }
+    })
+  );
 }
 
 async function authenticateBrowser(baseURL: string) {

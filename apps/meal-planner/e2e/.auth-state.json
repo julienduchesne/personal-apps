@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "site_password",
+      "value": "test-password",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1806032937.369063,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { readJson, writeJson, listBlobs, uploadFile, deleteBlob } from "@repo/storage";
-import { EXERCISES } from "@/lib/seed-exercises";
-import type { Exercise, Piece, PlaytimeSession } from "@/lib/types";
+import type { Exercise, ExerciseCategory, Piece, PlaytimeSession } from "@/lib/types";
+import { EXERCISE_CATEGORIES } from "@/lib/types";
 import {
   type Proficiency,
   PROFICIENCY_LEVELS,
@@ -18,29 +18,109 @@ import {
 } from "@/lib/daily-logic";
 
 const PIECES_PATH = "data/pieces.json";
+const EXERCISES_PATH = "data/exercises.json";
 
 function dailyPath(date: string): string {
   return `data/daily-${date}.json`;
 }
 
+// ===== EXERCISES (S3-stored) =====
+
 export async function getExercises(): Promise<Exercise[]> {
-  return EXERCISES;
+  const data = await readJson<Exercise[]>(EXERCISES_PATH);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addExercise(formData: {
+  name: string;
+  category: ExerciseCategory;
+  focus: string;
+}): Promise<void> {
+  const exercises = await getExercises();
+  const exercise: Exercise = {
+    id: crypto.randomUUID(),
+    name: formData.name.trim(),
+    category: formData.category,
+    focus: formData.focus.trim(),
+  };
+  exercises.push(exercise);
+  await writeJson(EXERCISES_PATH, exercises);
+  revalidatePath("/exercises");
+}
+
+export async function updateExercise(
+  id: string,
+  updates: Partial<Pick<Exercise, "name" | "category" | "focus" | "youtubeUrl">>
+): Promise<void> {
+  const exercises = await getExercises();
+  const i = exercises.findIndex((e) => e.id === id);
+  if (i === -1) return;
+  if (updates.name != null) exercises[i].name = updates.name.trim();
+  if (updates.category != null && (EXERCISE_CATEGORIES as readonly string[]).includes(updates.category)) {
+    exercises[i].category = updates.category;
+  }
+  if (updates.focus != null) exercises[i].focus = updates.focus.trim();
+  if ("youtubeUrl" in updates) exercises[i].youtubeUrl = updates.youtubeUrl?.trim() || undefined;
+  await writeJson(EXERCISES_PATH, exercises);
+  revalidatePath("/exercises");
+}
+
+export async function deleteExercise(id: string): Promise<void> {
+  const exercises = await getExercises();
+  const exercise = exercises.find((e) => e.id === id);
+  if (!exercise) return;
+  if (exercise.hasSheetMusic) {
+    await deleteBlob(`exercise-sheet-music/${id}.pdf`);
+  }
+  const filtered = exercises.filter((e) => e.id !== id);
+  await writeJson(EXERCISES_PATH, filtered);
+  revalidatePath("/exercises");
+}
+
+export async function uploadExerciseSheetMusic(
+  id: string,
+  formData: FormData
+): Promise<void> {
+  const file = formData.get("pdf");
+  if (!(file instanceof File)) return;
+  if (file.size > 20 * 1024 * 1024) throw new Error("PDF must be 20 MB or smaller.");
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await uploadFile(`exercise-sheet-music/${id}.pdf`, buffer, "application/pdf");
+  const exercises = await getExercises();
+  const i = exercises.findIndex((e) => e.id === id);
+  if (i !== -1) {
+    exercises[i].hasSheetMusic = true;
+    await writeJson(EXERCISES_PATH, exercises);
+  }
+  revalidatePath("/exercises");
+}
+
+export async function deleteExerciseSheetMusic(id: string): Promise<void> {
+  await deleteBlob(`exercise-sheet-music/${id}.pdf`);
+  const exercises = await getExercises();
+  const i = exercises.findIndex((e) => e.id === id);
+  if (i !== -1) {
+    exercises[i].hasSheetMusic = false;
+    await writeJson(EXERCISES_PATH, exercises);
+  }
+  revalidatePath("/exercises");
 }
 
 export async function getTodayExercises(
   date: string
 ): Promise<{ date: string; exercises: Exercise[] }> {
+  const allExercises = await getExercises();
   const path = dailyPath(date);
   const existing = await readJson<{ date: string; exerciseTitles: string[] }>(path);
   if (existing?.exerciseTitles?.length) {
-    const list = resolveExercisesByTitle(EXERCISES, existing.exerciseTitles);
+    const list = resolveExercisesByTitle(allExercises, existing.exerciseTitles);
     if (list.length > 0) {
       return { date, exercises: list };
     }
   }
-  const titles = selectOnePerCategory(EXERCISES);
+  const titles = selectOnePerCategory(allExercises);
   await writeJson(path, { date, exerciseTitles: titles });
-  return { date, exercises: resolveExercisesByTitle(EXERCISES, titles) };
+  return { date, exercises: resolveExercisesByTitle(allExercises, titles) };
 }
 
 export async function regenerateTodayExercises(date: string): Promise<void> {
@@ -50,6 +130,7 @@ export async function regenerateTodayExercises(date: string): Promise<void> {
 }
 
 export async function getDailyPickHistory(): Promise<{ date: string; exercises: Exercise[] }[]> {
+  const allExercises = await getExercises();
   const keys = await listBlobs("daily-");
   const entries = await Promise.all(
     keys.map(async (key) => {
@@ -58,7 +139,7 @@ export async function getDailyPickHistory(): Promise<{ date: string; exercises: 
       const date = dateMatch[1];
       const data = await readJson<{ date: string; exerciseTitles: string[] }>(key);
       if (!data?.exerciseTitles?.length) return null;
-      const exercises = resolveExercisesByTitle(EXERCISES, data.exerciseTitles);
+      const exercises = resolveExercisesByTitle(allExercises, data.exerciseTitles);
       if (exercises.length === 0) return null;
       return { date, exercises };
     })
@@ -277,4 +358,4 @@ export async function updatePlaytimeSession(
   revalidatePath("/playtime");
 }
 
-export type { Exercise, Piece, Proficiency, PlaytimeSession };
+export type { Exercise, ExerciseCategory, Piece, Proficiency, PlaytimeSession };

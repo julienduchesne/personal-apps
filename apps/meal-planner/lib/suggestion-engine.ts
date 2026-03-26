@@ -1,4 +1,4 @@
-import { Recipe, DaySchedule, TagLimit, MealLog, Suggestion, getEffectivePrepTime } from "./types";
+import { Recipe, DaySchedule, TagLimit, MealLog, Snooze, Suggestion, getEffectivePrepTime } from "./types";
 import { getDayOfWeek, daysBetween, today } from "./date-utils";
 
 /**
@@ -24,7 +24,8 @@ export function generateSuggestions(
   schedule: DaySchedule[],
   tagLimits: TagLimit[],
   recentMeals: MealLog[],
-  weekMeals: MealLog[]
+  weekMeals: MealLog[],
+  snoozes: Snooze[] = []
 ): Suggestion[] {
   if (allRecipes.length === 0) return [];
 
@@ -61,6 +62,12 @@ export function generateSuggestions(
     }
     return true;
   });
+
+  // Step 3: Filter out snoozed recipes
+  const snoozedIds = new Set(
+    snoozes.filter((s) => s.until >= date).map((s) => s.recipeId)
+  );
+  candidates = candidates.filter((r) => !snoozedIds.has(r.id));
 
   if (candidates.length === 0) return [];
 

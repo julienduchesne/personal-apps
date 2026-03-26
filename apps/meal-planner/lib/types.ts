@@ -35,6 +35,13 @@ export interface MealLog {
   freeText: string | null;
 }
 
+export interface Snooze {
+  id: string;
+  recipeId: string;
+  reason: string;
+  until: string; // YYYY-MM-DD (inclusive)
+}
+
 export interface Suggestion {
   recipe: Recipe;
   score: number;

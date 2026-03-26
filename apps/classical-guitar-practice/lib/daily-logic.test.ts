@@ -9,11 +9,11 @@ import {
 import type { Exercise, Piece } from "./types";
 
 const EXERCISES: Exercise[] = [
-  { name: "Ex A", category: "right_hand", focus: "Focus A" },
-  { name: "Ex B", category: "right_hand", focus: "Focus B" },
-  { name: "Ex C", category: "left_hand", focus: "Focus C" },
-  { name: "Ex D", category: "coordination_scales", focus: "Focus D" },
-  { name: "Ex E", category: "specialized", focus: "Focus E" },
+  { id: "1", name: "Ex A", category: "right_hand", focus: "Focus A" },
+  { id: "2", name: "Ex B", category: "right_hand", focus: "Focus B" },
+  { id: "3", name: "Ex C", category: "left_hand", focus: "Focus C" },
+  { id: "4", name: "Ex D", category: "coordination_scales", focus: "Focus D" },
+  { id: "5", name: "Ex E", category: "specialized", focus: "Focus E" },
 ];
 
 function makePiece(overrides: Partial<Piece> = {}): Piece {
@@ -82,7 +82,7 @@ describe("selectOnePerCategory", () => {
 
   it("skips categories with no exercises", () => {
     const onlyRightHand: Exercise[] = [
-      { name: "Solo", category: "right_hand", focus: "Focus" },
+      { id: "6", name: "Solo", category: "right_hand", focus: "Focus" },
     ];
     const result = selectOnePerCategory(onlyRightHand);
     expect(result).toHaveLength(1);

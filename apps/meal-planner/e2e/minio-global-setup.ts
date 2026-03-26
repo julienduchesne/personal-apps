@@ -30,7 +30,7 @@ export async function ensureBucket() {
 
 export async function clearData() {
   const s3 = makeClient();
-  for (const key of ["data/recipes.json", "data/meal-log.json"]) {
+  for (const key of ["data/recipes.json", "data/meal-log.json", "data/snoozes.json"]) {
     try {
       await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
     } catch {

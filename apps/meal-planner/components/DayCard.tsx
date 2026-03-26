@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Recipe, MealLog, Suggestion, DaySchedule } from "@/lib/types";
+import { Recipe, MealLog, Suggestion, Snooze, DaySchedule } from "@/lib/types";
 import { getDayNameShort, formatDateShort, today } from "@/lib/date-utils";
 import { TagBadge } from "./TagBadge";
 import { SuggestionPicker } from "./SuggestionPicker";
@@ -14,6 +14,7 @@ interface Props {
   mealRecipe: Recipe | undefined;
   suggestions: Suggestion[];
   allRecipes: Recipe[];
+  snoozes: Snooze[];
 }
 
 export function DayCard({
@@ -24,6 +25,7 @@ export function DayCard({
   mealRecipe,
   suggestions,
   allRecipes,
+  snoozes,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const todayStr = today();
@@ -111,6 +113,7 @@ export function DayCard({
         dateLabel={dateLabel}
         suggestions={suggestions}
         allRecipes={allRecipes}
+        snoozes={snoozes}
         currentMeal={
           meal
             ? {
