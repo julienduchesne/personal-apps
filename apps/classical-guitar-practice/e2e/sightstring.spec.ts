@@ -87,6 +87,7 @@ test("saves a score and its photo across browsers and supports downloading and r
     await other.goto("/sightstring");
     const saved = other.getByRole("region", { name: title });
     await expect(saved).toBeVisible();
+    await expect(saved.getByText("Rescan", { exact: true })).toHaveCount(0);
     const downloadEvent = other.waitForEvent("download");
     await saved.getByRole("link", { name: "Download image" }).click();
     const download = await downloadEvent;
@@ -99,18 +100,22 @@ test("saves a score and its photo across browsers and supports downloading and r
     }, [...bytes]);
     expect(dimensions).toEqual([900, 400]);
 
-    await saved.getByRole("button", { name: "Rescan", exact: true }).click();
+    await saved.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(other.getByRole("heading", { name: "Edit score" })).toBeVisible();
+    await other.getByText("Rescan", { exact: true }).click();
     await other.getByRole("button", { name: "Rescan saved photos" }).click();
     await expect(other.getByRole("button", { name: "Edit note 1 E4" })).toBeVisible();
     await other.getByRole("button", { name: "Back to scores" }).click();
     await saved.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(other.getByRole("button", { name: "Edit note 1 E♯4" })).toBeVisible();
-    await other.getByRole("button", { name: "Back to scores" }).click();
-
-    await saved.getByRole("button", { name: "Rescan", exact: true }).click();
-    const chooser = other.waitForEvent("filechooser");
-    await other.getByRole("button", { name: "Choose replacement photos" }).click();
-    await (await chooser).setFiles(await printedPage(other, 2));
+    const replacement = await printedPage(other, 2);
+    await other.getByText("Rescan", { exact: true }).click();
+    const [chooser] = await Promise.all([
+      other.waitForEvent("filechooser"),
+      other.getByRole("button", { name: "Choose replacement photos" }).click(),
+    ]);
+    await chooser.setFiles(replacement);
+    await expect(other.getByRole("heading", { name: "Edit score" })).toBeVisible();
     await expect(other.getByText("2 notes", { exact: true })).toBeVisible();
     await other.getByRole("button", { name: "Save and practice" }).click();
     await expect(other.getByRole("heading", { name: title })).toBeVisible();
@@ -219,7 +224,7 @@ test("keeps tracks, lines, and appended photos in order", async ({ page }) => {
   await expect(saved.getByRole("link", { name: /^Download page/ })).toHaveCount(3);
 });
 
-test("turns the expected note green when microphone audio matches", async ({ page }) => {
+test("shows solfège prompts and turns notes green when microphone audio matches", async ({ page }) => {
   await page.addInitScript(() => {
     const media = navigator.mediaDevices;
     Object.defineProperty(media, "getUserMedia", {
@@ -230,7 +235,11 @@ test("turns the expected note green when microphone audio matches", async ({ pag
         const string = context.createOscillator();
         const amplitude = context.createGain();
         string.frequency.value = 82.4069;
-        amplitude.gain.value = 0.12;
+        amplitude.gain.value = 0;
+        window.addEventListener("sightstring-test-tone", (event) => {
+          string.frequency.value = (event as CustomEvent<number>).detail;
+          amplitude.gain.value = 0.12;
+        });
         string.connect(amplitude).connect(destination);
         string.start();
         return destination.stream;
@@ -240,8 +249,18 @@ test("turns the expected note green when microphone audio matches", async ({ pag
   await page.goto("/sightstring");
   await page.getByRole("button", { name: "Practice Open String Study", exact: true }).click();
   await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.getByText("Play · Mi (E3)", { exact: true })).toBeVisible();
+  const play = (frequency: number) => page.evaluate((value) => {
+    window.dispatchEvent(new CustomEvent("sightstring-test-tone", { detail: value }));
+  }, frequency);
+  await play(82.4069);
   await expect(page.getByText("1 of 16 notes played")).toBeVisible();
   await expect(page.locator('[data-note="demo-0-0"]')).toHaveAttribute("data-status", "correct");
+  await expect(page.getByText("Play · La (A3)", { exact: true })).toBeVisible();
+  await play(110);
+  await expect(page.getByText("Play · Ré (D4)", { exact: true })).toBeVisible();
+  await play(146.8324);
+  await expect(page.getByText("Play · Sol (G4)", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByText("Play at your own pace")).toBeVisible();
 });

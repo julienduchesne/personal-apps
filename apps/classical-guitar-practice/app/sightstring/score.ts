@@ -49,6 +49,13 @@ export function noteName(step: number, key: number, accidental: Accidental = nul
   return `${"CDEFGAB"[letter]}${["♭", "", "♯"][alteration + 1]}${octave}`;
 }
 
+export function practiceNoteName(note: Note, key: number) {
+  const { letter, octave, alteration } = pitch(note.step, key, note.accidental);
+  const sign = ["♭", "", "♯"][alteration + 1];
+  const solfege = ["Do", "Ré", "Mi", "Fa", "Sol", "La", "Si"][letter];
+  return `${solfege}${sign} (${"CDEFGAB"[letter]}${sign}${octave})`;
+}
+
 export function soundingMidi(note: Note, key: number) {
   const { letter, octave, alteration } = pitch(note.step, key, note.accidental);
   // Written classical guitar notation sounds an octave lower.

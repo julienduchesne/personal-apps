@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { downloadUrl, listScores, loadScanPhoto, recoverLocalScores, saveScore } from "./library";
 import { listen } from "./microphone";
 import { scanPage } from "./recognition";
-import { exercise, keys, noteName, scoreEvents, soundingMidi, steps, type Note, type Score, type Staff } from "./score";
+import { exercise, keys, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Note, type Score, type Staff } from "./score";
 import styles from "./Sightstring.module.css";
 
 function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
@@ -177,7 +177,7 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
       <div aria-live="polite">
         <strong>{!event ? "Score complete" : state === "listening" ? "Listening" : state === "starting" ? "Starting microphone…" : "Play at your own pace"}</strong>
         <p>{!event ? "You played every note." : state === "listening"
-          ? `${remaining.length > 1 ? "Pick each note separately" : "Play"} · ${remaining.map((note) => noteName(note.step, score.key, note.accidental)).join(", ")}`
+          ? `${remaining.length > 1 ? "Pick each note separately" : "Play"} · ${remaining.map((note) => practiceNoteName(note, score.key)).join(", ")}`
           : "Use standard tuning and pluck one note at a time."}</p>
         {error && <p role="alert">{error}</p>}
       </div>
@@ -208,16 +208,18 @@ async function scanPhotos(files: File[], offset = 0, savedPhotos?: string[]) {
   return { pages, staves };
 }
 
-function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => void; onSave: (score: Score) => Promise<void> }) {
+function Review({ initial, editing, onBack, onSave }: { initial: Score; editing: boolean; onBack: () => void; onSave: (score: Score) => Promise<void> }) {
   const [score, setScore] = useState(initial);
   const [index, setIndex] = useState(0);
   const [selection, setSelection] = useState<Note | null>(null);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [addingPages, setAddingPages] = useState(false);
+  const [readingPhotos, setReadingPhotos] = useState(false);
   const extraCamera = useRef<HTMLInputElement>(null);
   const extraPhotos = useRef<HTMLInputElement>(null);
+  const replacing = useRef(false);
+  const busy = readingPhotos || saving;
   const staff = score.staves[index];
   const existing = staff.notes.some((note) => note.id === selection?.id);
 
@@ -251,21 +253,36 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
     setIndex(next);
   }
 
-  async function appendPhotos(files: FileList | null) {
-    if (!files?.length) return;
-    const selected = Array.from(files);
+  async function readPhotos(loadFiles: () => Promise<File[]>, replace: boolean, savedPhotos?: string[]) {
     const pages = score.pages ?? [];
+    const offset = replace ? 0 : pages.length;
     setError("");
-    setAddingPages(true);
+    setReadingPhotos(true);
     try {
-      const scans = await scanPhotos(selected, pages.length);
-      setScore((current) => ({ ...current, pages: [...pages, ...scans.pages], staves: [...current.staves, ...scans.staves] }));
-      move(score.staves.length);
+      const scans = await scanPhotos(await loadFiles(), offset, savedPhotos);
+      setScore((current) => ({
+        ...current,
+        pages: replace ? scans.pages : [...pages, ...scans.pages],
+        staves: replace ? scans.staves : [...current.staves, ...scans.staves],
+      }));
+      move(replace ? 0 : score.staves.length);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Couldn’t add the photos.");
+      setError(cause instanceof Error ? cause.message : "Couldn’t read the photos.");
     } finally {
-      setAddingPages(false);
+      setReadingPhotos(false);
     }
+  }
+
+  function choosePhotos(input: HTMLInputElement | null, replace: boolean) {
+    replacing.current = replace;
+    input?.click();
+  }
+
+  function photosChosen(input: HTMLInputElement) {
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    if (files.length) void readPhotos(async () => files, replacing.current);
+    replacing.current = false;
   }
 
   async function save() {
@@ -279,7 +296,7 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
   return <>
     <button className={styles.textButton} onClick={onBack}>Back to scores</button>
     <header className={styles.heading}>
-      <h1>Review scan</h1>
+      <h1>{editing ? "Edit score" : "Review scan"}</h1>
       <p>Check the detected notes and set the key signature. Tap a note to correct its pitch or accidental.</p>
     </header>
     <div className={styles.fields}>
@@ -288,6 +305,18 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
         {keys.map((key, i) => <option key={key} value={i - 7}>{key} major</option>)}
       </select></label>
     </div>
+    {editing && <details className={styles.rescan}>
+      <summary>Rescan</summary>
+      <p>Review the new scan and save it to replace this score’s notes.</p>
+      <div className={styles.actions}>
+        {!!initial.pages?.length && <button className={styles.primary} disabled={busy} onClick={() => {
+          const sources = initial.pages ?? [];
+          void readPhotos(() => Promise.all(sources.map(loadScanPhoto)), true, sources);
+        }}>Rescan saved photos</button>}
+        <button className={styles.secondary} disabled={busy} onClick={() => choosePhotos(extraCamera.current, true)}>Take a new photo</button>
+        <button className={styles.secondary} disabled={busy} onClick={() => choosePhotos(extraPhotos.current, true)}>Choose replacement photos</button>
+      </div>
+    </details>}
     <div className={styles.staffNavigation}>
       <button className={styles.secondary} disabled={index === 0} onClick={() => move(index - 1)}>Previous</button>
       <strong className={styles.staffCounter}>Staff {index + 1} of {score.staves.length}
@@ -329,16 +358,16 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
       </div>
     </form>}
     {(score.pages?.length ?? 24) < 24 && <div className={styles.actions} aria-label="Add pages">
-      <button className={styles.secondary} disabled={addingPages || saving} onClick={() => extraCamera.current?.click()}>Take another photo</button>
-      <button className={styles.secondary} disabled={addingPages || saving} onClick={() => extraPhotos.current?.click()}>Add photos</button>
-      <input hidden ref={extraCamera} aria-label="Take an extra score photo" type="file" accept="image/*" capture="environment"
-        onChange={(event) => { void appendPhotos(event.target.files); event.target.value = ""; }} />
-      <input hidden ref={extraPhotos} aria-label="Upload additional score photos" type="file" accept="image/*" multiple
-        onChange={(event) => { void appendPhotos(event.target.files); event.target.value = ""; }} />
-      {addingPages && <span role="status">Reading additional pages…</span>}
+      <button className={styles.secondary} disabled={busy} onClick={() => choosePhotos(extraCamera.current, false)}>Take another photo</button>
+      <button className={styles.secondary} disabled={busy} onClick={() => choosePhotos(extraPhotos.current, false)}>Add photos</button>
     </div>}
+    <input hidden ref={extraCamera} aria-label="Take an extra score photo" type="file" accept="image/*" capture="environment"
+      onChange={(event) => photosChosen(event.target)} />
+    <input hidden ref={extraPhotos} aria-label="Upload additional score photos" type="file" accept="image/*" multiple
+      onChange={(event) => photosChosen(event.target)} />
+    {readingPhotos && <span role="status">Reading the photos…</span>}
     {error && <p role="alert">{error}</p>}
-    <button className={styles.primary} disabled={saving || addingPages || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
+    <button className={styles.primary} disabled={busy || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
       {saving ? "Saving…" : "Save and practice"}
     </button>
   </>;
@@ -346,13 +375,11 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
 
 export function Sightstring() {
   const [scores, setScores] = useState<Score[]>([]);
-  const [screen, setScreen] = useState<{ name: "library" } | { name: "review" | "practice"; score: Score }>({ name: "library" });
+  const [screen, setScreen] = useState<{ name: "library" } | { name: "review"; score: Score; editing: boolean } | { name: "practice"; score: Score }>({ name: "library" });
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
-  const [rescanFor, setRescanFor] = useState<string | null>(null);
   const camera = useRef<HTMLInputElement>(null);
   const photos = useRef<HTMLInputElement>(null);
-  const replacement = useRef<Score | undefined>(undefined);
   const started = useRef(false);
 
   useEffect(() => {
@@ -382,34 +409,23 @@ export function Sightstring() {
 
   function back() { setScreen({ name: "library" }); }
 
-  function choose(input: HTMLInputElement | null, score?: Score) {
-    replacement.current = score;
-    input?.click();
-  }
-
-  async function scan(loadFiles: () => Promise<File[]>, existing?: Score, savedPhotos?: string[]) {
+  async function importPhotos(files: FileList | null) {
+    if (!files?.length) return;
+    const selected = Array.from(files);
     setError("");
     setImporting(true);
     try {
-      const { pages, staves } = await scanPhotos(await loadFiles(), 0, savedPhotos);
-      setRescanFor(null);
-      setScreen({ name: "review", score: {
-        id: existing?.id ?? crypto.randomUUID(), title: existing?.title ?? "Untitled score",
-        key: existing?.key ?? 0, pages, staves,
+      const { pages, staves } = await scanPhotos(selected);
+      setScreen({ name: "review", editing: false, score: {
+        id: crypto.randomUUID(), title: "Untitled score", key: 0, pages, staves,
       } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn’t read the score."); }
     finally { setImporting(false); }
   }
 
-  function importPhotos(files: FileList | null) {
-    if (!files?.length) return;
-    const selected = Array.from(files);
-    void scan(async () => selected, replacement.current);
-  }
-
   return <div className={styles.sightstring}>
     {screen.name === "practice" ? <Practice score={screen.score} onBack={back} />
-      : screen.name === "review" ? <Review initial={screen.score} onBack={back} onSave={async (score) => {
+      : screen.name === "review" ? <Review initial={screen.score} editing={screen.editing} onBack={back} onSave={async (score) => {
         const saved = await saveScore(score);
         setScores((existing) => [saved, ...existing.filter((entry) => entry.id !== saved.id)]);
         setScreen({ name: "practice", score: saved });
@@ -423,8 +439,8 @@ export function Sightstring() {
             <StaffPaper staff={exercise.staves[0]} correct={new Set(["demo-0-0", "demo-0-1", "demo-0-2"])}
               active={new Set(["demo-0-3"])} />
             <div className={styles.importActions}>
-              <button className={styles.primary} disabled={importing} onClick={() => choose(camera.current)}>Take a photo</button>
-              <button className={styles.secondary} disabled={importing} onClick={() => choose(photos.current)}>Choose photos</button>
+              <button className={styles.primary} disabled={importing} onClick={() => camera.current?.click()}>Take a photo</button>
+              <button className={styles.secondary} disabled={importing} onClick={() => photos.current?.click()}>Choose photos</button>
               <input hidden ref={camera} aria-label="Take a score photo" type="file" accept="image/*" capture="environment"
                 onChange={(e) => { void importPhotos(e.target.files); e.target.value = ""; }} />
               <input hidden ref={photos} aria-label="Upload score photos" type="file" accept="image/*" multiple
@@ -446,30 +462,17 @@ export function Sightstring() {
                 <div className={styles.scoreRow}>
                   <div><strong>{score.title}</strong><p>{score.staves.reduce((count, staff) => count + staff.notes.length, 0)} notes</p></div>
                   <div className={styles.actions}>
-                    <button className={styles.textButton} disabled={importing} onClick={() => setScreen({ name: "review", score })}>Edit</button>
+                    <button className={styles.textButton} disabled={importing} onClick={() => setScreen({ name: "review", score, editing: true })}>Edit</button>
                     <button className={styles.secondary} disabled={importing} onClick={() => setScreen({ name: "practice", score })}>Practice</button>
                   </div>
                 </div>
                 <div className={styles.actions}>
-                  <button className={styles.textButton} disabled={importing} aria-expanded={rescanFor === score.id}
-                    onClick={() => setRescanFor(rescanFor === score.id ? null : score.id)}>Rescan</button>
                   {images.map((source, index) => {
                     const filename = `${score.title} - ${score.pages ? "page" : "staff"} ${index + 1}`;
                     return <a key={index} className={styles.textButton} href={downloadUrl(source, filename)}
                       download={`${filename}.jpg`}>{images.length === 1 ? "Download image" : `Download ${score.pages ? "page" : "staff"} ${index + 1}`}</a>;
                   })}
                 </div>
-                {rescanFor === score.id && <div className={styles.rescan}>
-                  <p>Review the new scan before replacing this score’s notes.</p>
-                  <div className={styles.actions}>
-                    {!!score.pages?.length && <button className={styles.primary} disabled={importing} onClick={() => {
-                      const sources = score.pages ?? [];
-                      void scan(() => Promise.all(sources.map(loadScanPhoto)), score, sources);
-                    }}>Rescan saved photos</button>}
-                    <button className={styles.secondary} disabled={importing} onClick={() => choose(camera.current, score)}>Take a new photo</button>
-                    <button className={styles.secondary} disabled={importing} onClick={() => choose(photos.current, score)}>Choose replacement photos</button>
-                  </div>
-                </div>}
               </section>;
             })}
             <p className={styles.local}>Scores and photos are saved to your library. Microphone audio stays in this browser.</p>

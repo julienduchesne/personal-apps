@@ -97,7 +97,8 @@
 .sightstring a.textButton { display: inline-flex; align-items: center; }
 .textButton:disabled { cursor: default; opacity: 0.48; }
 .rescan { padding: 0.75rem; border-radius: 0.42rem; background: #faf4e9; }
-.rescan p { margin-bottom: 0.5rem; color: var(--muted); }
+.rescan summary { cursor: pointer; font-weight: 600; }
+.rescan p { margin-block: 0.45rem; color: var(--muted); }
 
 .staffCounter { text-align: center; }
 .location { display: block; font-size: 0.875rem; font-weight: 400; color: var(--muted); }
