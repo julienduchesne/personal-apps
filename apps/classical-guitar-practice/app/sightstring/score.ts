@@ -75,15 +75,22 @@ export function scoreEvents(score: Score, track = 1) {
   });
 }
 
+export function exerciseStaff(id: string, notes: Pick<Note, "step" | "accidental">[]): Staff {
+  const spacing = 15;
+  const positions = notes.map(({ step }) => (10 - step) * spacing / 2);
+  const top = Math.max(63, 28 - Math.min(...positions));
+  return {
+    width: 600, height: Math.max(190, top + Math.max(...positions) + 14, top + 77), left: 28, right: 572, top, spacing,
+    notes: notes.map((note, index) => ({
+      ...note, id: `${id}-${index}`, x: 115 + index * 61, y: top + positions[index], hollow: false,
+    })),
+  };
+}
+
 export const exercise: Score = {
   id: "open-strings",
   title: "Open String Study",
   key: 0,
-  staves: [[-5, -2, 1, 4, 6, 9, 6, 4], [1, 4, 6, 9, 4, 6, 4, 1]].map((row, index) => ({
-    width: 600, height: 190, left: 28, right: 572, top: 63, spacing: 15,
-    notes: row.map((step, offset) => ({
-      id: `demo-${index}-${offset}`, x: 115 + offset * 61, y: 63 + (10 - step) * 7.5,
-      step, accidental: null, hollow: false,
-    })),
-  })),
+  staves: [[-5, -2, 1, 4, 6, 9, 6, 4], [1, 4, 6, 9, 4, 6, 4, 1]].map((row, index) =>
+    exerciseStaff(`demo-${index}`, row.map((step) => ({ step, accidental: null })))),
 };

@@ -296,3 +296,53 @@ test("recognizes a quick quieter note while the first string is still ringing", 
   await expect(page.getByText("Play · Ré (D4)", { exact: true })).toBeVisible();
   await expect(page.getByText("2 of 16 notes played")).toBeVisible();
 });
+
+test("generates a playable random exercise for open strings and fret 18", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      value: async () => {
+        const audio = new AudioContext();
+        await audio.resume();
+        const destination = audio.createMediaStreamDestination();
+        window.addEventListener("sightstring-test-play-note", (event) => {
+          const oscillator = audio.createOscillator();
+          const gain = audio.createGain();
+          oscillator.frequency.value = (event as CustomEvent<number>).detail;
+          gain.gain.value = 0.12;
+          oscillator.connect(gain).connect(destination);
+          oscillator.start();
+          oscillator.stop(audio.currentTime + 0.25);
+        });
+        return destination.stream;
+      },
+    });
+  });
+
+  await page.goto("/sightstring");
+  await page.getByRole("button", { name: "Set up random sightreading" }).click();
+  const strings = page.getByRole("group", { name: "Strings" }).getByRole("checkbox");
+  for (const string of await strings.all()) await string.uncheck();
+  await expect(page.getByRole("button", { name: "Generate exercise" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "String 1 (High E)" }).check();
+  await page.getByLabel("Last fret").selectOption("0");
+  await expect(page.getByLabel("First fret")).toHaveValue("0");
+  await page.getByRole("button", { name: "Generate exercise" }).click();
+  await expect(page.getByText("0 of 16 notes played")).toBeVisible();
+  await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.getByText("Play · Mi (E5)", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Practice settings" }).click();
+  await expect(page.getByRole("checkbox", { name: "String 1 (High E)" })).toBeChecked();
+  await page.getByLabel("Last fret").selectOption("18");
+  await page.getByLabel("First fret").selectOption("18");
+  await page.getByRole("button", { name: "Generate exercise" }).click();
+  await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.getByText("Play · Si♭ (B♭6)", { exact: true })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("sightstring-test-play-note", { detail: 932.328 })));
+  await expect(page.getByText("1 of 16 notes played")).toBeVisible();
+  await page.getByRole("button", { name: "New exercise" }).click();
+  await expect(page.getByText("0 of 16 notes played")).toBeVisible();
+  await page.getByRole("button", { name: "Practice settings" }).click();
+  await expect(page.getByLabel("First fret")).toHaveValue("18");
+  await expect(page.getByLabel("Last fret")).toHaveValue("18");
+});

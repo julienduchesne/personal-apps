@@ -105,3 +105,21 @@
 .systems .location { margin-bottom: 0.25rem; }
 .trackPicker { display: flex; align-items: center; gap: 0.75rem; font-weight: 600; }
 .trackPicker select { width: auto; }
+
+.accidental { font: normal 4cqw/1 "Apple Symbols", "Segoe UI Symbol", serif; transform: translate(-100%, -50%); }
+.randomForm { display: grid; gap: 1rem; }
+.strings { border: 0; min-width: 0; }
+.strings legend { font-weight: 600; margin-bottom: 0.35rem; }
+.stringGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.45rem; }
+.stringOption {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.42rem;
+  background: var(--paper);
+  cursor: pointer;
+}
+.stringOption input { width: auto; accent-color: var(--blue); }

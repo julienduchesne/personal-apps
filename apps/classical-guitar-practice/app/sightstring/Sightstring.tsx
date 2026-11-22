@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { downloadUrl, listScores, loadScanPhoto, recoverLocalScores, saveScore } from "./library";
 import { listen } from "./microphone";
 import { scanPage } from "./recognition";
+import { RandomPractice } from "./RandomPractice";
+import { generateRandomExercise, guitarStrings, type RandomSettings } from "./randomExercise";
 import { exercise, keys, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Note, type Score, type Staff } from "./score";
 import styles from "./Sightstring.module.css";
 
@@ -40,7 +42,7 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
         {[staff.left, 330, staff.right - 5, staff.right].map((bar) => (
           <i key={bar} className={styles.bar} style={{ left: x(bar), top: y(staff.top), height: y(spacing * 4) }} />
         ))}
-        <i className={styles.clef} style={{ left: x(46), top: y(77) }}>𝄞</i>
+        <i className={styles.clef} style={{ left: x(46), top: y(staff.top + 14) }}>𝄞</i>
       </>}
       {staff.notes.map((note) => {
         const id = note.id;
@@ -48,7 +50,9 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
         const current = active?.has(id);
         const chosen = selected === id;
         const up = note.step < 6;
-        const ledgers = [0, -2, -4, 12, 14, 16].filter((step) => step <= 0 ? note.step <= step : note.step >= step);
+        const ledgers: number[] = [];
+        for (let step = 0; step >= note.step; step -= 2) ledgers.push(step);
+        for (let step = 12; step <= note.step; step += 2) ledgers.push(step);
         return (
           <span key={id} data-note={id} data-status={hit ? "correct" : current ? "current" : undefined}
             data-selected={chosen || undefined} data-review={reviewing || undefined} className={styles.mark}>
@@ -58,6 +62,9 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
               }} />
             )}
             {!staff.image && <>
+              {note.accidental !== null && <i className={styles.accidental} style={{ left: x(note.x - spacing * 0.8), top: y(note.y) }}>
+                {["♭", "♮", "♯"][note.accidental + 1]}
+              </i>}
               {ledgers.map((step) => <i key={step} className={styles.line} style={{
                 left: x(note.x - spacing * 0.95), width: x(spacing * 1.9), top: y(staff.top + (10 - step) * spacing / 2),
               }} />)}
@@ -78,12 +85,15 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
   );
 }
 
-function Practice({ score, onBack }: { score: Score; onBack: () => void }) {
+function Practice({ score, onBack, onGenerate }: { score: Score; onBack: () => void; onGenerate?: () => void }) {
   const [track, setTrack] = useState(1);
   const tracks = [...new Set(score.staves.filter((staff) => staff.notes.length > 0).map((staff) => staff.track ?? 1))].sort((a, b) => a - b);
   const selected = tracks.includes(track) ? track : tracks[0] ?? 1;
   return <>
-    <button className={styles.textButton} onClick={onBack}>Back to scores</button>
+    <div className={styles.actions}>
+      <button className={styles.textButton} onClick={onBack}>{onGenerate ? "Practice settings" : "Back to scores"}</button>
+      {onGenerate && <button className={styles.secondary} onClick={onGenerate}>New exercise</button>}
+    </div>
     {tracks.length > 1 && <label className={styles.trackPicker}>Practice track
       <select value={selected} onChange={(event) => setTrack(Number(event.target.value))}>
         {tracks.map((number) => <option key={number} value={number}>Track {number}</option>)}
@@ -382,7 +392,12 @@ function Review({ initial, editing, onBack, onSave }: { initial: Score; editing:
 
 export function Sightstring() {
   const [scores, setScores] = useState<Score[]>([]);
-  const [screen, setScreen] = useState<{ name: "library" } | { name: "review"; score: Score; editing: boolean } | { name: "practice"; score: Score }>({ name: "library" });
+  const [screen, setScreen] = useState<
+    { name: "library" | "random" } | { name: "review"; score: Score; editing: boolean } | { name: "practice"; score: Score; random?: boolean }
+  >({ name: "library" });
+  const [randomSettings, setRandomSettings] = useState<RandomSettings>({
+    strings: guitarStrings.map(({ number }) => number), firstFret: 0, lastFret: 4,
+  });
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const camera = useRef<HTMLInputElement>(null);
@@ -415,6 +430,8 @@ export function Sightstring() {
   }, []);
 
   function back() { setScreen({ name: "library" }); }
+  function random() { setScreen({ name: "random" }); }
+  function generate() { setScreen({ name: "practice", score: generateRandomExercise(randomSettings), random: true }); }
 
   async function importPhotos(files: FileList | null) {
     if (!files?.length) return;
@@ -431,12 +448,14 @@ export function Sightstring() {
   }
 
   return <div className={styles.sightstring}>
-    {screen.name === "practice" ? <Practice score={screen.score} onBack={back} />
+    {screen.name === "practice" ? <Practice key={screen.score.id} score={screen.score}
+      onBack={screen.random ? random : back} onGenerate={screen.random ? generate : undefined} />
       : screen.name === "review" ? <Review initial={screen.score} editing={screen.editing} onBack={back} onSave={async (score) => {
         const saved = await saveScore(score);
         setScores((existing) => [saved, ...existing.filter((entry) => entry.id !== saved.id)]);
         setScreen({ name: "practice", score: saved });
       }} />
+        : screen.name === "random" ? <RandomPractice settings={randomSettings} onChange={setRandomSettings} onBack={back} onGenerate={generate} />
         : <>
           <header className={styles.heading}>
             <h1>Sightstring</h1>
@@ -462,6 +481,10 @@ export function Sightstring() {
               <div><strong>{exercise.title}</strong><p>Built-in exercise</p></div>
               <button className={styles.secondary} aria-label={`Practice ${exercise.title}`} disabled={importing}
                 onClick={() => setScreen({ name: "practice", score: exercise })}>Practice</button>
+            </div>
+            <div className={styles.scoreRow}>
+              <div><strong>Random sightreading</strong><p>Choose strings and frets</p></div>
+              <button className={styles.secondary} aria-label="Set up random sightreading" disabled={importing} onClick={random}>Set up</button>
             </div>
             {scores.map((score) => {
               const images = score.pages ?? score.staves.flatMap((staff) => staff.image ? [staff.image] : []);
