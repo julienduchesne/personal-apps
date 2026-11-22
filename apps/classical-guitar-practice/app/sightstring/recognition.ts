@@ -29,15 +29,35 @@ function template(spacing: number, width: number) {
   return { upper, lower, exterior, core, leftEdge, rightEdge, radius };
 }
 
-function hasStem(ink: Uint8Array, width: number, x: number, y: number, spacing: number) {
+function hasStem(ink: Uint8Array, mask: Uint8Array, width: number, x: number, y: number, firstRow: number, spacing: number) {
+  const connection = Math.ceil(spacing * 1.25);
+  const gapLimit = Math.max(1, Math.floor(spacing * 0.28));
+  const drift = Math.max(1, Math.floor(spacing * 0.12));
   for (const direction of [-1, 1]) {
     for (let side = Math.floor(spacing * 0.40); side <= Math.floor(spacing * 0.83); side++) {
+      // A fingering digit can sit near a real stem, so require the stem to meet this head.
+      const column = x + direction * side;
+      let gap = 0;
+      for (let distance = 0; distance <= connection; distance++) {
+        const row = y - direction * distance;
+        const position = (firstRow + row) * width + column;
+        let dark = false;
+        for (let offset = -drift; offset <= drift; offset++) {
+          if (mask[position + offset]) {
+            dark = true;
+            break;
+          }
+        }
+        gap = dark ? 0 : gap + 1;
+        if (gap > gapLimit) break;
+      }
+      if (gap > gapLimit) continue;
       let dark = 0;
       let samples = 0;
       for (let distance = Math.floor(spacing * 0.65); distance <= Math.floor(spacing * 2.8); distance++) {
         const row = y - direction * distance;
         if (row < 0 || row >= ink.length / width) break;
-        dark += ink[row * width + x + direction * side];
+        dark += ink[row * width + column];
         samples++;
       }
       if (samples >= Math.floor(spacing * 1.25) && dark >= samples * 0.6) return true;
@@ -85,7 +105,7 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
         const solid = core >= 0.5 && Math.min(upper, lower) >= 0.53;
         const hollow = core <= 0.36;
         if (!solid && !hollow) continue;
-        if (!hasStem(ink, width, x, y - start, spacing)) {
+        if (!hasStem(ink, mask, width, x, y - start, start, spacing)) {
           // Whole notes lack stems but still have a wider, closed outline than fingering digits.
           if (solid || Math.min(upper, lower) < 0.59 || edge >= 0.17 || x - left < 5 * spacing
             || coverage(samples.leftEdge, center) < 0.51 || coverage(samples.rightEdge, center) < 0.51) continue;

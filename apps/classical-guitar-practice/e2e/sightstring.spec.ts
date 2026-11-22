@@ -27,6 +27,47 @@ async function printedPage(page: Page, count = 3) {
   return { name: "printed-exercise.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") };
 }
 
+test("keeps a ledger-line note and skips the fingering 3 beside it", async ({ page }) => {
+  await page.goto("/sightstring");
+  const image = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 540;
+    canvas.height = 300;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "white";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#0f0f0f";
+    for (let line = 0; line < 5; line++) context.fillRect(20, 65 + line * 20, 500, 2);
+
+    const x = 290;
+    const y = 165;
+    context.fillRect(x - 19, y, 38, 2);
+    for (let v = -12; v <= 12; v++) {
+      for (let u = -16; u <= 16; u++) {
+        if ((u / 13) ** 2 + ((v + u * 0.29) / 9) ** 2 <= 1) context.fillRect(x + u, y + v, 1, 1);
+      }
+    }
+    context.fillRect(x + 10, y - 65, 3, 65);
+
+    const digit = [".####.", "######", "....##", "...###", ".#####", "....##", "....##", "##..##", "#####.", ".###.."];
+    digit.forEach((line, row) => {
+      [...line].forEach((pixel, column) => {
+        if (pixel !== "#") return;
+        const top = Math.round(y + 18 + row * 1.8);
+        const bottom = Math.round(y + 18 + (row + 1) * 1.8);
+        context.fillRect(x - 6 + column * 2, top, 2, bottom - top);
+      });
+    });
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByLabel("Upload score photos").setInputFiles({
+    name: "fingering.png", mimeType: "image/png", buffer: Buffer.from(image, "base64"),
+  });
+  await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Edit note/ })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Edit note 1 C4" })).toBeVisible();
+});
+
 test("saves a score and its photo across browsers and supports downloading and rescanning", async ({ page, browser, baseURL }) => {
   const title = `Printed exercise ${crypto.randomUUID()}`;
   await page.goto("/sightstring");
