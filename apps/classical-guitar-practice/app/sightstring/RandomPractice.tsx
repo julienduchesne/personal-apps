@@ -1,4 +1,4 @@
-import { availablePitches, frets, guitarStrings, type RandomSettings } from "./randomExercise";
+import { availablePitches, bassNotesByMelody, frets, guitarStrings, isValidNoteCount, maximumExerciseNotes, type RandomSettings } from "./randomExercise";
 import styles from "./Sightstring.module.css";
 
 function fretLabel(fret: number) {
@@ -11,12 +11,14 @@ export function RandomPractice({ settings, onChange, onGenerate, onBack }: {
   onGenerate: () => void;
   onBack: () => void;
 }) {
-  const canGenerate = availablePitches(settings).length > 0;
+  const hasPitches = availablePitches(settings).length > 0;
+  const validLength = isValidNoteCount(settings.noteCount);
+  const hasBassPairs = !settings.withBass || bassNotesByMelody(settings).size > 0;
+  const canGenerate = hasPitches && validLength && hasBassPairs;
   return <>
     <button className={styles.textButton} onClick={onBack}>Back to scores</button>
     <header className={styles.heading}>
       <h1>Random sightreading</h1>
-      <p>Choose the strings and frets to use in a 16-note exercise.</p>
     </header>
     <form className={styles.randomForm} onSubmit={(event) => { event.preventDefault(); if (canGenerate) onGenerate(); }}>
       <fieldset className={styles.strings}>
@@ -44,14 +46,26 @@ export function RandomPractice({ settings, onChange, onGenerate, onBack }: {
           {frets.filter((fret) => fret >= settings.firstFret).map((fret) => <option key={fret} value={fret}>{fretLabel(fret)}</option>)}
         </select></label>
       </div>
+      <label className={styles.exerciseLength}>{settings.withBass ? "Number of melody notes" : "Number of notes"}
+        <input type="number" inputMode="numeric" min={1} max={maximumExerciseNotes} value={settings.noteCount}
+          onChange={({ target }) => onChange({ ...settings, noteCount: target.value === "" ? "" : target.valueAsNumber })} />
+      </label>
       <label className={styles.checkbox}>
         <input type="checkbox" checked={settings.allowAccidentals}
           onChange={(event) => onChange({ ...settings, allowAccidentals: event.target.checked })} />
         Allow sharps and flats
       </label>
-      {!canGenerate && <p className={styles.local} role="status">
+      <label className={styles.checkbox}>
+        <input type="checkbox" checked={settings.withBass}
+          onChange={(event) => onChange({ ...settings, withBass: event.target.checked })} />
+        Bass and melody together
+      </label>
+      {settings.withBass && <p className={styles.local}>Adds a bass note on beats 1 and 3.</p>}
+      {!hasPitches && <p className={styles.local} role="status">
         {settings.strings.length ? "No natural notes in this range. Change the frets or strings, or allow sharps and flats." : "Select at least one string."}
       </p>}
+      {hasPitches && !hasBassPairs && <p role="status">Choose a string and fret range with a pair the microphone can distinguish.</p>}
+      {!validLength && <p role="status">Enter a whole number from 1 to {maximumExerciseNotes}.</p>}
       <button className={styles.primary} type="submit" disabled={!canGenerate}>Generate exercise</button>
     </form>
   </>;

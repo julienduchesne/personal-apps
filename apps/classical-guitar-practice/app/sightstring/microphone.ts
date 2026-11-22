@@ -125,11 +125,27 @@ export function createListeningDetector(sampleRate: number) {
       if (raw && !expected.includes(raw.midi) && !blockers.some(({ midi }) => midi === raw.midi) && blockers.length < 2) {
         blockers.push(raw);
       }
-      if (blockers.length) {
-        const residual = isolate(blockers);
-        if (rms(residual) >= Math.max(0.0025, volume * 0.10)) {
-          const isolated = estimate(residual);
-          if (expectedPluck(isolated)) pitch = isolated;
+      const estimateResidual = (voices: Pitch[]) => {
+        const residual = isolate(voices);
+        return rms(residual) >= Math.max(0.0025, volume * 0.10) ? estimate(residual) : null;
+      };
+      for (let count = 1; !pitch && count <= blockers.length; count++) {
+        const isolated = estimateResidual(blockers.slice(0, count));
+        if (expectedPluck(isolated)) pitch = isolated;
+      }
+      if (!pitch && expected.length === 2) {
+        // Two strings starting together may hide each other's periodicity.
+        for (const [index, midi] of expected.entries()) {
+          const other = expected[1 - index];
+          if (other === midi) break;
+          const period = rate / (440 * 2 ** ((other - 69) / 12));
+          const voice = { midi: other, period };
+          const resting = blockers.find(({ midi }) => ringing.has(midi));
+          const isolated = estimateResidual(resting ? [voice, resting] : [voice]);
+          if (isolated?.midi === midi && expectedPluck(isolated)) {
+            pitch = isolated;
+            break;
+          }
         }
       }
     }

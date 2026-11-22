@@ -7,12 +7,13 @@ interface Pluck {
   amplitude: number;
 }
 
-function play(plucks: Pluck[], expected: number[]) {
+function play(plucks: Pluck[], expected: number[], simultaneous = false) {
   const sampleRate = 48_000;
   const detector = createListeningDetector(sampleRate);
   const samples = new Float32Array(detector.bufferSize);
+  const remaining = [...expected];
   const detected: { midi: number; time: number }[] = [];
-  for (let time = 0; time < 0.45 && detected.length < expected.length; time += 0.0167) {
+  for (let time = 0; time < 0.45 && remaining.length; time += 0.0167) {
     for (let i = 0; i < samples.length; i++) {
       const t = time - (samples.length - i) / sampleRate;
       samples[i] = plucks.reduce((mix, pluck) => {
@@ -23,8 +24,11 @@ function play(plucks: Pluck[], expected: number[]) {
           * (Math.sin(phase) + 0.35 * Math.sin(2 * phase + 0.35) + 0.15 * Math.sin(3 * phase - 0.2));
       }, 0);
     }
-    const midi = detector.detect(samples, [expected[detected.length]]);
-    if (midi !== undefined) detected.push({ midi, time });
+    const midi = detector.detect(samples, simultaneous ? remaining : remaining.slice(0, 1));
+    if (midi !== undefined) {
+      detected.push({ midi, time });
+      remaining.splice(remaining.indexOf(midi), 1);
+    }
   }
   return detected;
 }
@@ -46,5 +50,11 @@ describe("listening detector", () => {
 
   it("waits for the expected pitch when a different string is plucked", () => {
     expect(play([lowE, { ...a, midi: 46 }], [40, 45]).map(({ midi }) => midi)).toEqual([40]);
+  });
+
+  it("hears both notes of a simultaneous perfect fifth without counting a single note as a pair", () => {
+    const pair = [{ time: 0, midi: 52, amplitude: 0.12 }, { time: 0, midi: 59, amplitude: 0.12 }];
+    expect(play(pair, [52, 59], true).map(({ midi }) => midi).sort()).toEqual([52, 59]);
+    expect(play(pair.slice(0, 1), [52, 59], true).map(({ midi }) => midi)).toEqual([52]);
   });
 });

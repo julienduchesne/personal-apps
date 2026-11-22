@@ -37,19 +37,27 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
     }} onClick={onPick ? pick : undefined} aria-hidden="true">
       {!staff.image && <>
         {[0, 1, 2, 3, 4].map((line) => (
-          <i key={line} className={styles.line} style={{ left: x(staff.left), width: x(staff.right - staff.left), top: y(staff.top + line * spacing) }} />
+          <i key={line} data-staff-line={line} className={styles.line}
+            style={{ left: x(staff.left), width: x(staff.right - staff.left), top: y(staff.top + line * spacing) }} />
         ))}
-        {[staff.left, 330, staff.right - 5, staff.right].map((bar) => (
+        {[staff.left, ...(staff.notes.some((note) => note.x > 330) ? [330] : []), staff.right - 5, staff.right].map((bar) => (
           <i key={bar} className={styles.bar} style={{ left: x(bar), top: y(staff.top), height: y(spacing * 4) }} />
         ))}
-        <i className={styles.clef} style={{ left: x(46), top: y(staff.top + 14) }}>𝄞</i>
+        {/* Bravura’s G-clef baseline sits 4.5 staff spaces down in this image. */}
+        <i data-clef="treble" className={styles.clef} style={{
+          left: x(staff.left + spacing * 0.8), top: y(staff.top + 3 * spacing - 4.5 * spacing),
+          width: x(3 * spacing), height: y(7.5 * spacing),
+        }} />
       </>}
       {staff.notes.map((note) => {
         const id = note.id;
         const hit = correct?.has(id);
         const current = active?.has(id);
         const chosen = selected === id;
-        const up = note.step < 6;
+        const up = note.voice ? note.voice === "melody" : note.step < 6;
+        const overlaps = note.voice && staff.notes.some((other) =>
+          other.x === note.x && other.voice !== note.voice && Math.abs(other.step - note.step) < 2);
+        const noteX = overlaps ? note.x + (up ? 0.5 : -0.5) * spacing : note.x;
         const ledgers: number[] = [];
         for (let step = 0; step >= note.step; step -= 2) ledgers.push(step);
         for (let step = 12; step <= note.step; step += 2) ledgers.push(step);
@@ -58,23 +66,23 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
             data-selected={chosen || undefined} data-review={reviewing || undefined} className={styles.mark}>
             {(current || chosen) && (
               <i className={styles.cursor} style={{
-                left: x(note.x - spacing * 0.95), width: x(spacing * 1.9), top: y(note.y - spacing), height: y(spacing * 2),
+                left: x(noteX - spacing * 0.95), width: x(spacing * 1.9), top: y(note.y - spacing), height: y(spacing * 2),
               }} />
             )}
             {!staff.image && <>
-              {note.accidental !== null && <i className={styles.accidental} style={{ left: x(note.x - spacing * 0.8), top: y(note.y) }}>
+              {note.accidental !== null && <i className={styles.accidental} style={{ left: x(noteX - spacing * 0.8), top: y(note.y) }}>
                 {["♭", "♮", "♯"][note.accidental + 1]}
               </i>}
               {ledgers.map((step) => <i key={step} className={styles.line} style={{
-                left: x(note.x - spacing * 0.95), width: x(spacing * 1.9), top: y(staff.top + (10 - step) * spacing / 2),
+                left: x(noteX - spacing * 0.95), width: x(spacing * 1.9), top: y(staff.top + (10 - step) * spacing / 2),
               }} />)}
               <i className={styles.stem} style={{
-                left: x(note.x + (up ? 0.58 : -0.65) * spacing), top: y(note.y + (up ? -3 : 0) * spacing), height: y(spacing * 3),
+                left: x(noteX + (up ? 0.58 : -0.65) * spacing), top: y(note.y + (up ? -3 : 0) * spacing), height: y(spacing * 3),
               }} />
             </>}
             {(!staff.image || hit || current || reviewing) && (
               <i className={`${styles.head} ${note.hollow ? styles.hollow : ""}`} style={{
-                left: x(note.x - spacing * 0.68), width: x(spacing * 1.36),
+                left: x(noteX - spacing * 0.68), width: x(spacing * 1.36),
                 top: y(note.y - spacing * 0.46), height: y(spacing * 0.92),
               }} />
             )}
@@ -173,6 +181,8 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
   }
 
   const remaining = event?.notes.filter((note) => !progress.correct.has(note.id)) ?? [];
+  const paired = event?.notes.some((note) => note.voice === "bass");
+  const prompt = remaining.length <= 1 ? "Play" : paired ? "Play together" : "Pick each note separately";
   return <>
     <header className={styles.heading}>
       <h1>{score.title}</h1>
@@ -192,8 +202,8 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
       <div aria-live="polite">
         <strong>{!event ? "Score complete" : state === "listening" ? "Listening" : state === "starting" ? "Starting microphone…" : "Play at your own pace"}</strong>
         <p>{!event ? "You played every note." : state === "listening"
-          ? `${remaining.length > 1 ? "Pick each note separately" : "Play"} · ${remaining.map((note) => practiceNoteName(note, score.key)).join(", ")}`
-          : "Use standard tuning and pluck one note at a time."}</p>
+          ? `${prompt} · ${remaining.map((note) => practiceNoteName(note, score.key)).join(", ")}`
+          : paired ? "Use standard tuning and pluck both notes together." : "Use standard tuning and pluck one note at a time."}</p>
         {error && <p role="alert">{error}</p>}
       </div>
       {!event ? <button className={styles.transportButton} onClick={() => {
@@ -396,7 +406,7 @@ export function Sightstring() {
     { name: "library" | "random" } | { name: "review"; score: Score; editing: boolean } | { name: "practice"; score: Score; random?: boolean }
   >({ name: "library" });
   const [randomSettings, setRandomSettings] = useState<RandomSettings>({
-    strings: guitarStrings.map(({ number }) => number), firstFret: 0, lastFret: 4, allowAccidentals: true,
+    strings: guitarStrings.map(({ number }) => number), firstFret: 0, lastFret: 4, allowAccidentals: false, noteCount: 16, withBass: false,
   });
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");

@@ -7,6 +7,7 @@ export interface Note {
   step: number;
   accidental: Accidental;
   hollow: boolean;
+  voice?: "bass" | "melody";
 }
 
 export interface Staff {
@@ -75,14 +76,16 @@ export function scoreEvents(score: Score, track = 1) {
   });
 }
 
-export function exerciseStaff(id: string, notes: Pick<Note, "step" | "accidental">[]): Staff {
+export function exerciseStaff(id: string, notes: (Pick<Note, "step" | "accidental" | "voice"> & { beat?: number })[]): Staff {
   const spacing = 15;
   const positions = notes.map(({ step }) => (10 - step) * spacing / 2);
-  const top = Math.max(63, 28 - Math.min(...positions));
+  const top = Math.max(63, 50 - Math.min(...positions));
+  const bottom = Math.max(...notes.map(({ step, voice }, index) =>
+    positions[index] + (voice === "bass" || (!voice && step >= 6) ? 50 : 14)));
   return {
-    width: 600, height: Math.max(190, top + Math.max(...positions) + 14, top + 77), left: 28, right: 572, top, spacing,
-    notes: notes.map((note, index) => ({
-      ...note, id: `${id}-${index}`, x: 115 + index * 61, y: top + positions[index], hollow: false,
+    width: 600, height: Math.max(190, top + bottom, top + 77), left: 28, right: 572, top, spacing,
+    notes: notes.map(({ beat, ...note }, index) => ({
+      ...note, id: `${id}-${index}`, x: 115 + (beat ?? index) * 61, y: top + positions[index], hollow: false,
     })),
   };
 }

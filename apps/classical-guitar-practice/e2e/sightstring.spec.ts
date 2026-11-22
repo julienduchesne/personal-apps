@@ -297,6 +297,53 @@ test("recognizes a quick quieter note while the first string is still ringing", 
   await expect(page.getByText("2 of 16 notes played")).toBeVisible();
 });
 
+test("practices an optional bass and melody pair in the same beat", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      value: async () => {
+        const context = new AudioContext();
+        await context.resume();
+        const destination = context.createMediaStreamDestination();
+        window.addEventListener("sightstring-test-pair", () => {
+          const now = context.currentTime + 0.02;
+          for (const frequency of [82.4069, 110]) {
+            const string = context.createOscillator();
+            const amplitude = context.createGain();
+            string.frequency.value = frequency;
+            amplitude.gain.value = 0.12;
+            string.connect(amplitude).connect(destination);
+            string.start(now);
+            string.stop(now + 0.5);
+          }
+        }, { once: true });
+        return destination.stream;
+      },
+    });
+  });
+
+  await page.goto("/sightstring");
+  await page.getByRole("button", { name: "Set up random sightreading" }).click();
+  const strings = page.getByRole("group", { name: "Strings" }).getByRole("checkbox");
+  for (const string of (await strings.all()).slice(1)) await string.uncheck();
+  await page.getByLabel("Last fret").selectOption("0");
+
+  const withBass = page.getByRole("checkbox", { name: "Bass and melody together" });
+  const generate = page.getByRole("button", { name: "Generate exercise" });
+  await expect(withBass).not.toBeChecked();
+  await expect(generate).toBeEnabled();
+  await withBass.check();
+  await expect(generate).toBeDisabled();
+  await page.getByRole("checkbox", { name: "String 5 (A)" }).check();
+  await page.getByLabel("Number of melody notes").fill("4");
+  await generate.click();
+  await expect(page.getByText("0 of 6 notes played")).toBeVisible();
+  await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.getByText("Play together · Mi (E3), La (A3)", { exact: true })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("sightstring-test-pair")));
+  await expect(page.getByText("2 of 6 notes played")).toBeVisible();
+  await expect(page.locator('[data-status="correct"]')).toHaveCount(2);
+});
+
 test("generates a playable random exercise for open strings and fret 18", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => {
@@ -335,6 +382,7 @@ test("generates a playable random exercise for open strings and fret 18", async 
   await expect(page.getByRole("checkbox", { name: "String 1 (High E)" })).toBeChecked();
   await page.getByLabel("Last fret").selectOption("18");
   await page.getByLabel("First fret").selectOption("18");
+  await page.getByRole("checkbox", { name: "Allow sharps and flats" }).check();
   await page.getByRole("button", { name: "Generate exercise" }).click();
   await page.getByRole("button", { name: "Start listening" }).click();
   await expect(page.getByText("Play · Si♭ (B♭6)", { exact: true })).toBeVisible();
@@ -356,14 +404,38 @@ test("can exclude sharps and flats from random sightreading", async ({ page }) =
   await page.getByLabel("First fret").selectOption("18");
   const accidentals = page.getByRole("checkbox", { name: "Allow sharps and flats" });
   const generate = page.getByRole("button", { name: "Generate exercise" });
-  await expect(accidentals).toBeChecked();
+  await expect(accidentals).not.toBeChecked();
+  await expect(generate).toBeDisabled();
+  await accidentals.check();
   await expect(generate).toBeEnabled();
   await accidentals.uncheck();
   await expect(generate).toBeDisabled();
   await expect(page.getByRole("status")).toContainText("No natural notes");
   await page.getByLabel("First fret").selectOption("17");
+  await page.getByLabel("Number of notes").fill("41");
   await generate.click();
-  await expect(page.getByText("0 of 16 notes played")).toBeVisible();
+  await expect(page.getByText("0 of 41 notes played")).toBeVisible();
   await page.getByRole("button", { name: "Practice settings" }).click();
   await expect(accidentals).not.toBeChecked();
+  await expect(page.getByLabel("Number of notes")).toHaveValue("41");
+});
+
+test("aligns the treble clef with the G line on mobile and desktop", async ({ page }) => {
+  await page.goto("/sightstring");
+  await page.getByRole("button", { name: "Practice Open String Study", exact: true }).click();
+  const clef = page.locator('[data-clef="treble"]').first();
+  await expect(clef).toHaveCSS("background-image", /treble-clef\.png/);
+  const image = await page.request.get("/sightstring/treble-clef.png");
+  expect(image.ok()).toBe(true);
+  expect(image.headers()["content-type"]).toContain("image/png");
+
+  for (const width of [390, 1100]) {
+    await page.setViewportSize({ width, height: 844 });
+    const anchorError = await clef.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const gLine = element.parentElement!.querySelector('[data-staff-line="3"]')!.getBoundingClientRect();
+      return Math.abs(box.top + box.height * (4.5 / 7.5) - gLine.top);
+    });
+    expect(anchorError).toBeLessThan(1);
+  }
 });
