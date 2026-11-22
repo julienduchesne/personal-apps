@@ -1,4 +1,4 @@
-import { listBlobs, readFileStream, readJson, uploadFile, writeJson } from "@repo/storage";
+import { deleteBlob, listBlobs, readFileStream, readJson, uploadFile, writeJson } from "@repo/storage";
 import { exercise, leaderboardSize, type Note, type PracticeAttempt, type Score, type Staff } from "@/app/sightstring/score";
 
 const prefix = "sightstring/scores/";
@@ -12,7 +12,12 @@ function fail(status: number, error: string) {
 }
 
 function scoreKey(id: string) { return `${prefix}${id}.json`; }
+function deletedKey(id: string) { return `${prefix}${id}.deleted`; }
 function imageKey(id: string, image: string) { return `sightstring/images/${id}/${image}.jpg`; }
+
+async function isDeleted(id: string) {
+  return id !== exercise.id && await readJson<boolean>(deletedKey(id), { strict: true }) === true;
+}
 
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -78,8 +83,11 @@ export async function GET(request: Request, { params }: Context) {
   const segments = (await params).segments ?? [];
   if (segments.length === 0) {
     try {
-      const keys = (await listBlobs(prefix, { strict: true })).filter((key) =>
-        key.endsWith(".json") && uuid.test(key.slice(prefix.length, -5)));
+      const blobs = new Set(await listBlobs(prefix, { strict: true }));
+      const keys = [...blobs].filter((key) => {
+        const id = key.slice(prefix.length, -5);
+        return key.endsWith(".json") && uuid.test(id) && !blobs.has(deletedKey(id));
+      });
       const scores = await Promise.all(keys.map((key) => readJson<Score>(key, { strict: true })));
       return Response.json(scores.filter(Boolean), { headers: { "Cache-Control": "private, no-store" } });
     } catch {
@@ -92,6 +100,7 @@ export async function GET(request: Request, { params }: Context) {
     const path = attemptPrefix(id, track);
     if (!path) return fail(404, "Leaderboard not found.");
     try {
+      if (await isDeleted(id)) return fail(410, "Score deleted.");
       // Sorting the duration in the object key lets us fetch only the fastest attempts.
       const keys = (await listBlobs(path, { strict: true })).sort().slice(0, leaderboardSize);
       const attempts = await Promise.all(keys.map((key) => readJson<PracticeAttempt>(key, { strict: true })));
@@ -101,7 +110,13 @@ export async function GET(request: Request, { params }: Context) {
     }
   }
   if (segments.length !== 2 || !uuid.test(id) || !uuid.test(image)) return fail(404, "Image not found.");
-  const stream = await readFileStream(imageKey(id, image));
+  let stream: ReadableStream | null;
+  try {
+    if (await isDeleted(id)) return fail(410, "Score deleted.");
+    stream = await readFileStream(imageKey(id, image));
+  } catch {
+    return fail(502, "Couldn’t load the scan image.");
+  }
   if (!stream) return fail(404, "Image not found.");
   const headers = new Headers({
     "Content-Type": "image/jpeg",
@@ -127,6 +142,7 @@ export async function PUT(request: Request, { params }: Context) {
     if (!isAttempt(attempt, attemptId)) return fail(400, "Invalid practice attempt.");
     const { durationMs, completedAt } = attempt;
     try {
+      if (await isDeleted(id)) return fail(410, "Score deleted.");
       const duration = String(durationMs).padStart(16, "0");
       await writeJson(`${path}${duration}-${attemptId}.json`, { id: attemptId, durationMs, completedAt });
       return new Response(null, { status: 204 });
@@ -136,6 +152,11 @@ export async function PUT(request: Request, { params }: Context) {
   }
   if (!id || !uuid.test(id) || segments.length > 2 || (image && !uuid.test(image))) {
     return fail(404, "Score not found.");
+  }
+  try {
+    if (await isDeleted(id)) return fail(410, "Score deleted.");
+  } catch {
+    return fail(502, "Couldn’t check the score.");
   }
   if (image) {
     if (request.headers.get("Content-Type") !== "image/jpeg") return fail(415, "Expected a JPEG image.");
@@ -165,5 +186,24 @@ export async function PUT(request: Request, { params }: Context) {
     return new Response(null, { status: 204 });
   } catch {
     return fail(502, "Couldn’t save the score.");
+  }
+}
+
+export async function DELETE(_request: Request, { params }: Context) {
+  if (!process.env.SITE_PASSWORD) return fail(503, "Score storage requires site authentication.");
+  const segments = (await params).segments ?? [];
+  const [id] = segments;
+  if (segments.length !== 1 || !uuid.test(id)) return fail(404, "Score not found.");
+  try {
+    // Keep the marker so stale saves and recovery from old browser libraries can’t restore the score.
+    await writeJson(deletedKey(id), true);
+    const related = await Promise.all([
+      listBlobs(`sightstring/images/${id}/`, { strict: true }),
+      listBlobs(`sightstring/attempts/${id}/`, { strict: true }),
+    ]);
+    await Promise.all([scoreKey(id), ...related.flat()].map(deleteBlob));
+    return new Response(null, { status: 204 });
+  } catch {
+    return fail(502, "Couldn’t finish deleting the score.");
   }
 }

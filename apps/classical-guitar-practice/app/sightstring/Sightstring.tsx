@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { downloadUrl, listBestAttempts, listScores, loadScanPhoto, recoverLocalScores, saveAttempt, saveScore } from "./library";
+import { DeletedScoreError, deleteLocalScore, deleteScore, downloadUrl, listBestAttempts, listScores, loadScanPhoto, recoverLocalScores, saveAttempt, saveScore } from "./library";
 import { guitarStrings, suggestFingerings } from "./fingering";
 import { listen } from "./microphone";
 import { scanPage } from "./recognition";
@@ -404,18 +404,22 @@ async function scanPhotos(files: File[], offset = 0, savedPhotos?: string[]) {
   return { pages, staves };
 }
 
-function Review({ initial, editing, onBack, onSave }: { initial: Score; editing: boolean; onBack: () => void; onSave: (score: Score) => Promise<void> }) {
+function Review({ initial, editing, onBack, onSave, onDelete }: {
+  initial: Score; editing: boolean; onBack: () => void;
+  onSave: (score: Score) => Promise<void>; onDelete?: () => Promise<void>;
+}) {
   const [score, setScore] = useState(initial);
   const [index, setIndex] = useState(0);
   const [selection, setSelection] = useState<Note | null>(null);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [readingPhotos, setReadingPhotos] = useState(false);
   const extraCamera = useRef<HTMLInputElement>(null);
   const extraPhotos = useRef<HTMLInputElement>(null);
   const replacing = useRef(false);
-  const busy = readingPhotos || saving;
+  const busy = readingPhotos || saving || deleting;
   const staff = score.staves[index];
   const existing = staff.notes.some((note) => note.id === selection?.id);
 
@@ -489,14 +493,46 @@ function Review({ initial, editing, onBack, onSave }: { initial: Score; editing:
     finally { setSaving(false); }
   }
 
+  async function removeScore() {
+    const related = initial.generated ? "practice times" : "photos and practice times";
+    if (!onDelete || !window.confirm(`Delete “${initial.title}” and its ${related}?`)) return;
+    setError("");
+    setDeleting(true);
+    try { await onDelete(); }
+    catch { setError("Couldn’t finish deleting the score. Try again."); }
+    finally { setDeleting(false); }
+  }
+
+  const backButton = <button className={styles.textButton} disabled={deleting} onClick={onBack}>Back to scores</button>;
+  const titleField = <label>Score title<input maxLength={200} value={score.title}
+    onChange={(event) => setScore({ ...score, title: event.target.value })} /></label>;
+  const actions = <>
+    {error && <p role="alert">{error}</p>}
+    <div className={styles.actions}>
+      <button className={styles.primary} disabled={busy || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
+        {saving ? "Saving…" : "Save and practice"}
+      </button>
+      {onDelete && <button className={`${styles.secondary} ${styles.deleteScore}`} disabled={busy} onClick={removeScore}>
+        {deleting ? "Deleting…" : "Delete score"}
+      </button>}
+    </div>
+  </>;
+
+  if (score.generated) return <>
+    {backButton}
+    <header className={styles.heading}><h1>Edit score</h1></header>
+    {titleField}
+    {actions}
+  </>;
+
   return <>
-    <button className={styles.textButton} onClick={onBack}>Back to scores</button>
+    {backButton}
     <header className={styles.heading}>
       <h1>{editing ? "Edit score" : "Review scan"}</h1>
       <p>Check the detected notes and set the key signature. Tap a note to correct its pitch or accidental.</p>
     </header>
     <div className={styles.fields}>
-      <label>Score title<input maxLength={200} value={score.title} onChange={(e) => setScore({ ...score, title: e.target.value })} /></label>
+      {titleField}
       <label>Key signature<select value={score.key} onChange={(e) => setScore({ ...score, key: Number(e.target.value) })}>
         {keys.map((key, i) => <option key={key} value={i - 7}>{key} major</option>)}
       </select></label>
@@ -569,10 +605,7 @@ function Review({ initial, editing, onBack, onSave }: { initial: Score; editing:
     <input hidden ref={extraPhotos} aria-label="Upload additional score photos" type="file" accept="image/*" multiple
       onChange={(event) => photosChosen(event.target)} />
     {readingPhotos && <span role="status">Reading the photos…</span>}
-    {error && <p role="alert">{error}</p>}
-    <button className={styles.primary} disabled={busy || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
-      {saving ? "Saving…" : "Save and practice"}
-    </button>
+    {actions}
   </>;
 }
 
@@ -589,6 +622,7 @@ export function Sightstring() {
   const camera = useRef<HTMLInputElement>(null);
   const photos = useRef<HTMLInputElement>(null);
   const started = useRef(false);
+  const locallyDeleted = useRef(new Set<string>());
 
   useEffect(() => {
     if (started.current) return;
@@ -599,16 +633,21 @@ export function Sightstring() {
         const stored = await listScores();
         const missing = local.filter(({ id }) => !stored.some((score) => score.id === id));
         const migrated = await Promise.allSettled(missing.map(saveScore));
-        const library = [...stored, ...missing.map((score, i) => {
+        const library = [...stored, ...missing.flatMap((score, i) => {
           const result = migrated[i];
-          return result.status === "fulfilled" ? result.value : score;
+          if (result.status === "fulfilled") return [result.value];
+          if (result.reason instanceof DeletedScoreError) {
+            void deleteLocalScore(score.id).catch(() => {});
+            return [];
+          }
+          return [score];
         })];
-        setScores((current) => [...current, ...library.filter(({ id }) => !current.some((score) => score.id === id))]);
-        if (migrated.some(({ status }) => status === "rejected")) {
+        setScores((current) => [...current, ...library.filter(({ id }) => !locallyDeleted.current.has(id) && !current.some((score) => score.id === id))]);
+        if (migrated.some((result) => result.status === "rejected" && !(result.reason instanceof DeletedScoreError))) {
           setError("Some scores are still on this device. Edit and save them to retry.");
         }
       } catch {
-        setScores(local);
+        setScores((current) => [...current, ...local.filter(({ id }) => !locallyDeleted.current.has(id) && !current.some((score) => score.id === id))]);
         setError("Couldn’t load your saved scores. Reload to try again.");
       }
     }
@@ -650,7 +689,13 @@ export function Sightstring() {
       } : undefined} />
       : screen.name === "review" ? <Review initial={screen.score} editing={screen.editing} onBack={back} onSave={async (score) => {
         setScreen({ name: "practice", score: await addToLibrary(score) });
-      }} />
+      }} onDelete={screen.editing ? async () => {
+        const { id } = screen.score;
+        await deleteScore(id);
+        locallyDeleted.current.add(id);
+        setScores((existing) => existing.filter((score) => score.id !== id));
+        back();
+      } : undefined} />
         : screen.name === "random" ? <RandomPractice settings={randomSettings} onChange={setRandomSettings} onBack={back} onGenerate={generate} />
         : <>
           <header className={styles.heading}>
@@ -688,8 +733,8 @@ export function Sightstring() {
                 <div className={styles.scoreRow}>
                   <div><strong>{score.title}</strong><p>{score.staves.reduce((count, staff) => count + staff.notes.length, 0)} notes</p></div>
                   <div className={styles.actions}>
-                    {!score.generated && <button className={styles.textButton} disabled={importing}
-                      onClick={() => setScreen({ name: "review", score, editing: true })}>Edit</button>}
+                    <button className={styles.textButton} disabled={importing}
+                      onClick={() => setScreen({ name: "review", score, editing: true })}>Edit</button>
                     <button className={styles.secondary} disabled={importing} onClick={() => setScreen({ name: "practice", score })}>Practice</button>
                   </div>
                 </div>

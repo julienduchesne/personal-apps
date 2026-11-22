@@ -40,6 +40,7 @@
 
 .primary { color: white; background: var(--practice); }
 .secondary { color: var(--ink); background: var(--paper); border-color: var(--border); }
+.deleteScore { color: #8f3030; }
 .textButton { color: #634426; background: transparent; padding-inline: 0.15rem; }
 .transportButton { background: #f1dbb8; color: #262121; }
 .primary:disabled, .secondary:disabled, .transportButton:disabled { cursor: default; opacity: 0.48; }

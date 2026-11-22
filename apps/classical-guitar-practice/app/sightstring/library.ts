@@ -2,8 +2,11 @@ import type { PracticeAttempt, Score } from "./score";
 
 const api = "/api/sightstring";
 
+export class DeletedScoreError extends Error {}
+
 async function requireSuccess(response: Response) {
   if (response.ok && !response.redirected) return response;
+  if (response.status === 410 && !response.redirected) throw new DeletedScoreError("Score deleted.");
   throw new Error("Couldn’t reach score storage.");
 }
 
@@ -49,8 +52,8 @@ export async function saveScore(score: Score): Promise<Score> {
   return saved;
 }
 
-export async function recoverLocalScores(): Promise<Score[]> {
-  const database = await new Promise<IDBDatabase | null>((resolve, reject) => {
+function openLegacyLibrary() {
+  return new Promise<IDBDatabase | null>((resolve, reject) => {
     const open = indexedDB.open("sightstring", 1);
     open.onupgradeneeded = () => {
       // Recovery should leave browsers without a legacy library unchanged.
@@ -60,6 +63,10 @@ export async function recoverLocalScores(): Promise<Score[]> {
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error);
   });
+}
+
+export async function recoverLocalScores(): Promise<Score[]> {
+  const database = await openLegacyLibrary();
   if (!database) return [];
   try {
     return await new Promise<Score[]>((resolve, reject) => {
@@ -70,6 +77,26 @@ export async function recoverLocalScores(): Promise<Score[]> {
   } finally {
     database.close();
   }
+}
+
+export async function deleteLocalScore(id: string) {
+  const database = await openLegacyLibrary();
+  if (!database) return;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("scores", "readwrite");
+      transaction.objectStore("scores").delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function deleteScore(id: string) {
+  await requireSuccess(await fetch(`${api}/${id}`, { method: "DELETE" }));
+  await deleteLocalScore(id).catch(() => {});
 }
 
 export function downloadUrl(source: string, filename: string) {

@@ -142,6 +142,34 @@ test("saves a score and its photo across browsers and supports downloading and r
   }
 });
 
+test("deletes a scanned score from Edit only after confirmation", async ({ page }) => {
+  const title = `Delete scan ${crypto.randomUUID()}`;
+  await page.goto("/sightstring");
+  await page.getByLabel("Upload score photos").setInputFiles(await printedPage(page));
+  await expect(page.getByRole("button", { name: "Delete score" })).toHaveCount(0);
+  await page.getByLabel("Score title").fill(title);
+  await page.getByRole("button", { name: "Save and practice" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await page.getByRole("button", { name: "Back to scores" }).click();
+  const saved = page.getByRole("region", { name: title });
+  const image = (await saved.getByRole("link", { name: "Download image" }).getAttribute("href"))!;
+  await saved.getByRole("button", { name: "Edit", exact: true }).click();
+  const deleteButton = page.getByRole("button", { name: "Delete score" });
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await deleteButton.click();
+  await expect(page.getByRole("heading", { name: "Edit score" })).toBeVisible();
+  expect((await page.request.get(image)).ok()).toBe(true);
+  page.once("dialog", (dialog) => dialog.accept());
+  await deleteButton.click();
+  await expect(page.getByRole("heading", { name: "Your scores" })).toBeVisible();
+  await expect(saved).toHaveCount(0);
+  expect((await page.request.get(image)).status()).toBe(410);
+  await page.reload();
+  const scores = await page.request.get("/api/sightstring");
+  expect((await scores.json()).some((score: { title: string }) => score.title === title)).toBe(false);
+  await expect(saved).toHaveCount(0);
+});
+
 test("copies scores from this browser’s old library into object storage", async ({ page, browser, baseURL }) => {
   const title = `Local study ${crypto.randomUUID()}`;
   await page.goto("/sightstring");
@@ -177,7 +205,16 @@ test("copies scores from this browser’s old library into object storage", asyn
   try {
     const other = await context.newPage();
     await other.goto("/sightstring");
-    await expect(other.getByRole("region", { name: title })).toBeVisible();
+    const saved = other.getByRole("region", { name: title });
+    await saved.getByRole("button", { name: "Edit", exact: true }).click();
+    other.once("dialog", (dialog) => dialog.accept());
+    await other.getByRole("button", { name: "Delete score" }).click();
+    await expect(other.getByRole("heading", { name: "Your scores" })).toBeVisible();
+    const blocked = page.waitForResponse((response) => response.request().method() === "PUT"
+      && response.url().includes("/api/sightstring/") && response.status() === 410);
+    await page.reload();
+    await blocked;
+    await expect(migrated).toHaveCount(0);
   } finally {
     await context.close();
   }
@@ -512,6 +549,13 @@ test("saves a generated exercise with its best times across visits", async ({ pa
   await page.getByRole("region", { name: title }).getByRole("button", { name: "Practice", exact: true }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(times).toHaveText([best, first]);
+  await page.getByRole("button", { name: "Back to scores" }).click();
+  const savedExercise = page.getByRole("region", { name: title });
+  await savedExercise.getByRole("button", { name: "Edit", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete score" }).click();
+  await expect(page.getByRole("heading", { name: "Your scores" })).toBeVisible();
+  await expect(savedExercise).toHaveCount(0);
 });
 
 test("can exclude sharps and flats from random sightreading", async ({ page }) => {
