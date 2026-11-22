@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { DeletedScoreError, deleteLocalScore, deleteScore, downloadUrl, listBestAttempts, listScores, loadScanPhoto, recoverLocalScores, saveAttempt, saveScore } from "./library";
 import { guitarStrings, suggestFingerings } from "./fingering";
 import { listen } from "./microphone";
+import { playScore } from "./playback";
 import { scanPage } from "./recognition";
 import { RandomPractice } from "./RandomPractice";
 import { generateRandomExercise, type RandomSettings } from "./randomExercise";
-import { displayAccidental, exercise, keys, leaderboardSize, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Finger, type Note, type PracticeAttempt, type Score, type Staff } from "./score";
+import { beatUnits, displayAccidental, exercise, keys, leaderboardSize, noteName, practiceNoteName, scoreEvents, scoreMeter, soundingMidi, steps, type Finger, type Meter, type Note, type PracticeAttempt, type Score, type Staff, type TimeSignature } from "./score";
 import styles from "./Sightstring.module.css";
 
-function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showPhoto = true, keySignature = 0, fingers }: {
+function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showPhoto = true, keySignature = 0, fingers, timeSignature = staff.timeSignature }: {
   staff: Staff;
   active?: Set<string>;
   correct?: Set<string>;
@@ -20,6 +21,7 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
   showPhoto?: boolean;
   keySignature?: number;
   fingers?: ReadonlyMap<string, Finger>;
+  timeSignature?: TimeSignature | null;
 }) {
   const x = (position: number) => `${100 * position / staff.width}%`;
   const y = (position: number) => `${100 * position / staff.height}%`;
@@ -55,6 +57,12 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
           left: x(staff.left + spacing * 0.8), top: y(staff.top + 3 * spacing - 4.5 * spacing),
           width: x(3 * spacing), height: y(7.5 * spacing),
         }} />
+        {timeSignature && [timeSignature.beats, timeSignature.beatUnit].map((number, index) => (
+          <i key={index} className={styles.meterDigit} data-meter-digit={number} style={{
+            left: x(timeSignature.x), top: y(staff.top + (index * 2 + 1) * spacing),
+            fontSize: `${245 * spacing / staff.width}cqw`,
+          }}>{number}</i>
+        ))}
       </>}
       {staff.notes.map((note) => {
         const id = note.id;
@@ -74,7 +82,7 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
         for (let step = 0; step >= note.step; step -= 2) ledgers.push(step);
         for (let step = 12; step <= note.step; step += 2) ledgers.push(step);
         return (
-          <span key={id} data-note={id} data-status={hit ? "correct" : current ? "current" : undefined}
+          <span key={id} data-note={id} data-duration={note.duration} data-status={hit ? "correct" : current ? "current" : undefined}
             data-selected={chosen || undefined} data-review={reviewing || undefined} className={styles.mark}>
             {(current || chosen) && (
               <i className={styles.cursor} style={{
@@ -225,14 +233,18 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
   const [reload, setReload] = useState(0);
   const startedAt = useRef<number | null>(null);
   const microphone = useRef<AbortController | null>(null);
+  const playback = useRef<AbortController | null>(null);
+  const [playbackIndex, setPlaybackIndex] = useState<number | null>(null);
   const systems = useRef<HTMLDivElement>(null);
   const event = events[progress.index];
-  const staffIndex = event?.staffIndex;
-  const visibleStaff = staffIndex ?? events.at(-1)?.staffIndex;
+  const shownEvent = playbackIndex === null ? event : events[playbackIndex];
+  const staffIndex = shownEvent?.staffIndex;
+  const visibleStaff = staffIndex ?? (playbackIndex === -1 ? events[0]?.staffIndex : events.at(-1)?.staffIndex);
   const previousStaff = useRef(visibleStaff);
   const nextStaff = score.staves.findIndex((staff, index) => visibleStaff !== undefined && index > visibleStaff && (staff.track ?? 1) === track);
   const visibleStaves = visibleStaff === undefined ? [] : nextStaff < 0 ? [visibleStaff] : [visibleStaff, nextStaff];
   const total = events.reduce((count, item) => count + item.notes.length, 0);
+  const meter = scoreMeter(score, track);
 
   function stop() {
     microphone.current?.abort();
@@ -240,11 +252,33 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
     setState("idle");
   }
 
+  function stopPlayback() {
+    playback.current?.abort();
+    playback.current = null;
+    setPlaybackIndex(null);
+  }
+
+  async function startPlayback() {
+    stop();
+    const controller = new AbortController();
+    playback.current = controller;
+    setPlaybackIndex(-1);
+    setError("");
+    try {
+      await playScore(score, track, controller.signal, setPlaybackIndex, stopPlayback);
+    } catch {
+      if (controller.signal.aborted) return;
+      stopPlayback();
+      setError("Couldn’t play the score.");
+    }
+  }
+
   useEffect(() => {
-    const pause = () => { if (document.hidden) stop(); };
+    const pause = () => { if (document.hidden) { stop(); stopPlayback(); } };
     document.addEventListener("visibilitychange", pause);
     return () => {
       microphone.current?.abort();
+      playback.current?.abort();
       document.removeEventListener("visibilitychange", pause);
     };
   }, []);
@@ -320,12 +354,14 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
   }
 
   const remaining = event?.notes.filter((note) => !progress.correct.has(note.id)) ?? [];
+  const highlighted = playbackIndex === null ? remaining : shownEvent?.notes ?? [];
   const paired = event?.notes.some((note) => note.voice === "bass");
   const prompt = remaining.length <= 1 ? "Play" : paired ? "Play together" : "Pick each note separately";
   return <>
     <header className={styles.heading}>
       <h1>{score.title}</h1>
       <p>{progress.correct.size} of {total} notes played</p>
+      {meter && <p>Time signature {meter.beats}/{meter.beatUnit}</p>}
       <progress aria-label="Practice progress" max={total} value={progress.correct.size} />
       <a className={styles.textButton} href="#sightstring-best-times">Best times</a>
     </header>
@@ -338,8 +374,11 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
           <p className={styles.location}>{next ? "Next line" : "Current line"}
             {staff.page && staff.line ? ` · Page ${staff.page} · Line ${staff.line}` : ""}
           </p>
-          <StaffPaper staff={staff} active={staffIndex === index ? new Set(remaining.map((note) => note.id)) : undefined}
-            correct={progress.correct} showPhoto={showPhoto} keySignature={score.key} fingers={fingers} />
+          <StaffPaper staff={staff} active={staffIndex === index ? new Set(highlighted.map((note) => note.id)) : undefined}
+            correct={playbackIndex === null ? progress.correct : undefined} showPhoto={showPhoto} keySignature={score.key} fingers={fingers}
+            timeSignature={score.timeSignature === undefined ? staff.timeSignature
+              : score.timeSignature && (index === events[0]?.staffIndex || staff.timeSignature)
+                ? { ...score.timeSignature, x: staff.timeSignature?.x ?? staff.left + staff.spacing * 4.4 } : null} />
         </section>;
       })}
     </div>
@@ -367,14 +406,18 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
     </section>
     <div className={styles.transport}>
       <div aria-live="polite">
-        <strong>{!event ? "Score complete" : state === "listening" ? "Listening" : state === "starting" ? "Starting microphone…" : "Play at your own pace"}</strong>
-        <p>{!event ? latestAttempt && `Time: ${formatDuration(latestAttempt.durationMs)}` : state === "listening"
+        <strong>{playbackIndex === -1 && meter ? "Counting in" : playbackIndex !== null ? "Playing score"
+          : !event ? "Score complete" : state === "listening" ? "Listening" : state === "starting" ? "Starting microphone…" : "Play at your own pace"}</strong>
+        <p>{playbackIndex !== null ? null : !event ? latestAttempt && `Time: ${formatDuration(latestAttempt.durationMs)}` : state === "listening"
           ? `${prompt} · ${remaining.map((note) => practiceNoteName(note, score.key)).join(", ")}`
           : paired ? "Use standard tuning and pluck both notes together." : "Use standard tuning and pluck one note at a time."}</p>
         {error && <p role="alert">{error}</p>}
       </div>
       {event && startedAt.current !== null && <RunningTimer startedAt={startedAt.current} />}
-      {!event ? <button className={styles.transportButton} onClick={() => {
+      <button className={styles.transportButton} onClick={playbackIndex === null ? startPlayback : stopPlayback}>
+        {playbackIndex === null ? "Play score" : "Stop playback"}
+      </button>
+      {playbackIndex === null && (!event ? <button className={styles.transportButton} onClick={() => {
         const reset = { index: 0, correct: new Set<string>() };
         startedAt.current = null;
         setLatestAttempt(undefined);
@@ -382,7 +425,7 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
         setProgress(reset);
       }}>Play again</button>
         : state === "listening" ? <button className={styles.transportButton} onClick={stop}>Pause</button>
-          : <button disabled={state === "starting"} className={styles.transportButton} onClick={start}>Start listening</button>}
+          : <button disabled={state === "starting"} className={styles.transportButton} onClick={start}>Start listening</button>)}
     </div>
   </>;
 }
@@ -409,6 +452,7 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
   onSave: (score: Score) => Promise<void>; onDelete?: () => Promise<void>;
 }) {
   const [score, setScore] = useState(initial);
+  const [meterDraft, setMeterDraft] = useState<{ beats: number | ""; beatUnit: Meter["beatUnit"] }>();
   const [index, setIndex] = useState(0);
   const [selection, setSelection] = useState<Note | null>(null);
   const [adding, setAdding] = useState(false);
@@ -422,6 +466,10 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
   const busy = readingPhotos || saving || deleting;
   const staff = score.staves[index];
   const existing = staff.notes.some((note) => note.id === selection?.id);
+  const meter = meterDraft ?? scoreMeter(score);
+  const beats = meter?.beats ?? "";
+  const beatUnit = meter?.beatUnit ?? 4;
+  const validMeter = beats === "" || (Number.isInteger(beats) && beats >= 1 && beats <= 32);
 
   function pick(x: number, y: number) {
     if (adding) {
@@ -488,7 +536,8 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
   async function save() {
     setError("");
     setSaving(true);
-    try { await onSave({ ...score, title: score.title.trim() }); }
+    const timeSignature = meterDraft === undefined ? score.timeSignature : beats === "" ? null : { beats, beatUnit };
+    try { await onSave({ ...score, title: score.title.trim(), timeSignature }); }
     catch { setError("Couldn’t save the score to your library. Try again."); }
     finally { setSaving(false); }
   }
@@ -506,10 +555,20 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
   const backButton = <button className={styles.textButton} disabled={deleting} onClick={onBack}>Back to scores</button>;
   const titleField = <label>Score title<input maxLength={200} value={score.title}
     onChange={(event) => setScore({ ...score, title: event.target.value })} /></label>;
+  const meterFields = <fieldset className={styles.meterFields}>
+    <legend>Time signature</legend>
+    <label>Beats per measure<input type="number" min={1} max={32} value={beats}
+      onChange={(event) => setMeterDraft({ beats: event.target.value === "" ? "" : event.target.valueAsNumber, beatUnit })} /></label>
+    <label>Beat unit<select value={beatUnit} onChange={(event) => setMeterDraft({
+      beats: beats === "" ? 4 : beats, beatUnit: Number(event.target.value) as Meter["beatUnit"],
+    })}>
+      {beatUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+    </select></label>
+  </fieldset>;
   const actions = <>
     {error && <p role="alert">{error}</p>}
     <div className={styles.actions}>
-      <button className={styles.primary} disabled={busy || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
+      <button className={styles.primary} disabled={busy || !validMeter || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
         {saving ? "Saving…" : "Save and practice"}
       </button>
       {onDelete && <button className={`${styles.secondary} ${styles.deleteScore}`} disabled={busy} onClick={removeScore}>
@@ -522,6 +581,7 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
     {backButton}
     <header className={styles.heading}><h1>Edit score</h1></header>
     {titleField}
+    {meterFields}
     {actions}
   </>;
 
@@ -537,6 +597,7 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
         {keys.map((key, i) => <option key={key} value={i - 7}>{key} major</option>)}
       </select></label>
     </div>
+    {meterFields}
     {editing && <details className={styles.rescan}>
       <summary>Rescan</summary>
       <p>Review the new scan and save it to replace this score’s notes.</p>

@@ -1,5 +1,5 @@
 import { deleteBlob, listBlobs, readFileStream, readJson, uploadFile, writeJson } from "@repo/storage";
-import { exercise, leaderboardSize, type Note, type PracticeAttempt, type Score, type Staff } from "@/app/sightstring/score";
+import { beatUnits, exercise, leaderboardSize, type Meter, type Note, type PracticeAttempt, type Score, type Staff } from "@/app/sightstring/score";
 
 const prefix = "sightstring/scores/";
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
@@ -33,8 +33,14 @@ function isNote(value: unknown, generated: boolean): value is Note {
     && range(value.step, -5, generated ? 20 : 16) && Number.isInteger(value.step)
     && (value.accidental === null || value.accidental === -1 || value.accidental === 0 || value.accidental === 1)
     && (value.finger === undefined || (range(value.finger, 0, 4) && Number.isInteger(value.finger)))
+    && (value.duration === undefined || value.duration === 0.5 || value.duration === 1 || value.duration === 2 || value.duration === 4)
     && (value.voice === undefined || (generated && (value.voice === "bass" || value.voice === "melody")))
     && typeof value.hollow === "boolean";
+}
+
+function isMeter(value: unknown): value is Meter {
+  return object(value) && range(value.beats, 1, 32) && Number.isInteger(value.beats)
+    && beatUnits.some((unit) => unit === value.beatUnit);
 }
 
 function isScore(value: unknown, id: string): value is Score {
@@ -49,6 +55,8 @@ function isScore(value: unknown, id: string): value is Score {
       || !range(entry.left, 0, entry.width) || !range(entry.right, entry.left, entry.width)
       || !range(entry.top, 0, entry.height) || !range(entry.spacing, 1, entry.height)
       || !Array.isArray(entry.notes) || entry.notes.length > 500 || !entry.notes.every((note) => isNote(note, generated))) return false;
+    if (entry.timeSignature !== undefined && (!isMeter(entry.timeSignature) || !("x" in entry.timeSignature)
+      || !range(entry.timeSignature.x, entry.left, entry.right))) return false;
     for (const [field, max] of [["page", 24], ["line", 250], ["track", 32]] as const) {
       if (entry[field] !== undefined && (!range(entry[field], 1, max) || !Number.isInteger(entry[field]))) return false;
     }
@@ -59,6 +67,7 @@ function isScore(value: unknown, id: string): value is Score {
   return object(value) && value.id === id && typeof value.title === "string" && !!value.title.trim() && value.title.length <= 200
     && range(value.key, -7, 7) && Number.isInteger(value.key)
     && (value.generated === undefined || generated)
+    && (value.timeSignature == null || isMeter(value.timeSignature))
     && (value.pages === undefined || (!generated && Array.isArray(value.pages) && value.pages.length <= 24 && value.pages.every(image)))
     && Array.isArray(value.staves) && value.staves.length <= 250
     && value.staves.every(staff) && value.staves.some((entry) => entry.notes.length > 0);

@@ -75,10 +75,17 @@ test("transcribes all 85 written pitches in the Moorish Dance photo", async ({ p
     "F3 G3 A3 C4 B3 A3 G3 F3 | E3 E4 E4 E3 E4 | A3 B3 C4 B3 D4 C4 B3 C4 | A3 E4 E4 A3 E4 | A3 B3 C4 B3 D4 C4 B3 A3",
     "G3 D4 D4 G3 D4 | G3 A3 B3 D4 C4 B3 A3 G3 | F3 C4 C4 F3 C4 | F3 G3 A3 C4 B3 A3 G3 F3 | E3 E4 E3",
   ];
+  const durations = [
+    "qqqq qeeqq eeeeeeee qeeqq",
+    "eeeeeeee qeeqq eeeeeeee qeeqq eeeeeeee",
+    "qeeqq eeeeeeee qeeqq eeeeeeee qqh",
+  ];
 
   await page.goto("/sightstring");
   await page.getByLabel("Upload score photos").setInputFiles(resolve(__dirname, "fixtures", "IMG_4218.jpeg"));
   await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
+  await expect(page.getByLabel("Beats per measure")).toHaveValue("4");
+  await expect(page.getByLabel("Beat unit")).toHaveValue("4");
   const notes = page.getByRole("button", { name: /^Edit note \d+ / });
   const next = page.getByRole("button", { name: "Next", exact: true });
   for (const [index, line] of expected.entries()) {
@@ -86,9 +93,48 @@ test("transcribes all 85 written pitches in the Moorish Dance photo", async ({ p
     await expect(page.getByText(`Staff ${number} of ${expected.length}`)).toBeVisible();
     await expect(page.getByText(`Page 1 · Line ${number} · Track 1`)).toBeVisible();
     await expect(notes, `Written pitches on line ${number}`).toHaveText(line.split(/[\s|]+/));
+    const rhythm = await page.locator("[data-note]").evaluateAll((marks) =>
+      marks.map((mark) => mark.getAttribute("data-duration")).map((duration) => {
+        if (duration === "0.5") return "e";
+        if (duration === "1") return "q";
+        if (duration === "2") return "h";
+        return "?";
+      }).join(""));
+    expect(rhythm, `Note lengths on line ${number}`).toEqual(durations[index].replaceAll(" ", ""));
     if (number < expected.length) await next.click();
   }
   await expect(next).toBeDisabled();
+  await page.getByLabel("Beats per measure").fill("3");
+  await page.getByLabel("Beat unit").selectOption("8");
+  await page.getByRole("button", { name: "Save and practice" }).click();
+  await expect(page.getByText("Time signature 3/8")).toBeVisible();
+});
+
+test("plays a scanned score with a manually entered time signature", async ({ page }) => {
+  const title = `Meter practice ${crypto.randomUUID()}`;
+  await page.goto("/sightstring");
+  await page.getByLabel("Upload score photos").setInputFiles(await printedPage(page));
+  await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
+  await expect(page.getByLabel("Beats per measure")).toHaveValue("");
+  await page.getByLabel("Beats per measure").fill("2");
+  await page.getByLabel("Beat unit").selectOption("8");
+  await page.getByLabel("Score title").fill(title);
+  await page.getByRole("button", { name: "Save and practice" }).click();
+  await expect(page.getByText("Time signature 2/8")).toBeVisible();
+  await page.getByLabel("Score view").selectOption("notation");
+  await expect(page.locator("[data-meter-digit]")).toHaveText(["2", "8"]);
+
+  await page.getByRole("button", { name: "Play score" }).click();
+  await expect(page.getByText("Counting in")).toBeVisible();
+  await expect(page.getByText("Playing score", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-status="current"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "Stop playback" }).click();
+  await expect(page.getByText("0 of 3 notes played")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Best times" }).getByText("No completed attempts yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Back to scores" }).click();
+  await page.getByRole("region", { name: title }).getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(page.getByLabel("Beats per measure")).toHaveValue("2");
+  await expect(page.getByLabel("Beat unit")).toHaveValue("8");
 });
 
 test("saves a score and its photo across browsers and supports downloading and rescanning", async ({ page, browser, baseURL }) => {

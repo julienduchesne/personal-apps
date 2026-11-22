@@ -1,6 +1,17 @@
 export type Accidental = -1 | 0 | 1 | null;
 export type Finger = 0 | 1 | 2 | 3 | 4;
 
+export const beatUnits = [1, 2, 4, 8, 16, 32] as const;
+
+export interface Meter {
+  beats: number;
+  beatUnit: typeof beatUnits[number];
+}
+
+export interface TimeSignature extends Meter {
+  x: number;
+}
+
 export interface Note {
   id: string;
   x: number;
@@ -8,6 +19,7 @@ export interface Note {
   step: number;
   accidental: Accidental;
   hollow: boolean;
+  duration?: 0.5 | 1 | 2 | 4;
   finger?: Finger;
   voice?: "bass" | "melody";
 }
@@ -24,6 +36,7 @@ export interface Staff {
   page?: number;
   line?: number;
   track?: number;
+  timeSignature?: TimeSignature;
   notes: Note[];
 }
 
@@ -32,6 +45,7 @@ export interface Score {
   title: string;
   key: number;
   generated?: true;
+  timeSignature?: Meter | null;
   pages?: string[];
   staves: Staff[];
 }
@@ -45,6 +59,13 @@ export interface PracticeAttempt {
 export const leaderboardSize = 10;
 export const steps = Array.from({ length: 22 }, (_, index) => index - 5);
 export const keys = ["C♭", "G♭", "D♭", "A♭", "E♭", "B♭", "F", "C", "G", "D", "A", "E", "B", "F♯", "C♯"];
+
+export function scoreMeter(score: Score, track = 1) {
+  return score.timeSignature === undefined
+    ? (score.staves.find((staff) => (staff.track ?? 1) === track && staff.timeSignature)
+      ?? score.staves.find((staff) => staff.timeSignature))?.timeSignature
+    : score.timeSignature;
+}
 
 function pitch(step: number, key: number, accidental: Accidental) {
   const letter = (step % 7 + 7) % 7;

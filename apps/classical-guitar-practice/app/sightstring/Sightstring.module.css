@@ -56,6 +56,11 @@
 .line { height: max(1px, 0.12cqw); background: #514b48; }
 .bar { width: max(1px, 0.16cqw); background: #514b48; }
 .clef { background: url("/sightstring/treble-clef.png") center / 100% 100% no-repeat; }
+.meterDigit { font-family: Georgia, serif; font-style: normal; font-weight: 700; line-height: 1; transform: translate(-50%, -50%); }
+.meterFields { display: flex; flex-wrap: wrap; gap: 0.6rem; border: 0; }
+.meterFields legend { font-weight: 600; margin-bottom: 0.3rem; }
+.meterFields label { display: grid; gap: 0.25rem; }
+.meterFields input, .meterFields select { width: 7rem; }
 .mark { color: var(--ink); }
 .mark[data-status="current"], .mark[data-review] { color: var(--blue); }
 .mark[data-status="correct"] { color: var(--correct); }

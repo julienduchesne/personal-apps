@@ -1,4 +1,5 @@
 import { steps, type Note, type Staff } from "./score";
+import { readTimeSignature } from "./timeSignature";
 
 import { adaptiveInk, findStaves, type Raster, type StaffGeometry } from "./staffGeometry";
 
@@ -29,7 +30,7 @@ function template(spacing: number, width: number) {
   return { upper, lower, exterior, core, leftEdge, rightEdge, radius };
 }
 
-function hasStem(ink: Uint8Array, mask: Uint8Array, width: number, x: number, y: number, firstRow: number, spacing: number) {
+function findStem(ink: Uint8Array, mask: Uint8Array, width: number, x: number, y: number, firstRow: number, spacing: number) {
   const connection = Math.ceil(spacing * 1.25);
   const gapLimit = Math.max(1, Math.floor(spacing * 0.28));
   const drift = Math.max(1, Math.floor(spacing * 0.12));
@@ -60,7 +61,55 @@ function hasStem(ink: Uint8Array, mask: Uint8Array, width: number, x: number, y:
         dark += ink[row * width + column];
         samples++;
       }
-      if (samples >= Math.floor(spacing * 1.25) && dark >= samples * 0.6) return true;
+      if (samples < Math.floor(spacing * 1.25) || dark < samples * 0.6) continue;
+      let last = connection;
+      const reach = Math.max(2, Math.round(spacing * 0.22));
+      for (let distance = connection; distance <= spacing * 6; distance++) {
+        const position = (firstRow + y - direction * distance) * width + column;
+        for (let offset = -reach; offset <= reach; offset++) {
+          if (!mask[position + offset]) continue;
+          last = distance;
+          break;
+        }
+        if (distance - last > gapLimit) break;
+      }
+      return { x: column, y: firstRow + y - direction * last, direction };
+    }
+  }
+}
+
+type Stem = NonNullable<ReturnType<typeof findStem>>;
+
+function joinedByBeam(mask: Uint8Array, width: number, spacing: number, a?: Stem, b?: Stem) {
+  if (!a || !b || a.direction !== b.direction || b.x - a.x < spacing || b.x - a.x > spacing * 8
+    || Math.abs(b.y - a.y) > (b.x - a.x) * 0.36 + spacing * 0.25) return false;
+  let joined = 0;
+  const thickness = Math.max(2, Math.round(spacing * 0.23));
+  for (let step = 1; step < 8; step++) {
+    const x = Math.round(a.x + (b.x - a.x) * step / 8);
+    const y = Math.round(a.y + (b.y - a.y) * step / 8);
+    let run = 0;
+    for (let offset = -Math.round(spacing * 0.24); offset <= Math.round(spacing * 0.65); offset++) {
+      run = mask[(y + offset * a.direction) * width + x] ? run + 1 : 0;
+      if (run >= thickness) {
+        joined++;
+        break;
+      }
+    }
+  }
+  return joined >= 6;
+}
+
+function barBetween(mask: Uint8Array, width: number, top: number, spacing: number, from: number, to: number) {
+  const height = Math.round(4 * spacing);
+  for (let x = Math.ceil(from + spacing * 0.55); x < to - spacing * 0.55; x += 2) {
+    for (const slope of [0, -0.11, 0.11]) {
+      let hits = 0;
+      for (let y = 0; y <= height; y += 2) {
+        const center = (top + y) * width + Math.round(x + slope * (y - height / 2));
+        hits += Number(Boolean(mask[center] || mask[center - 1] || mask[center + 1]));
+      }
+      if (hits >= (Math.floor(height / 2) + 1) * 0.91) return true;
     }
   }
   return false;
@@ -69,7 +118,6 @@ function hasStem(ink: Uint8Array, mask: Uint8Array, width: number, x: number, y:
 function findNotes({ width, height, pixels }: Raster, top: number, spacing: number, left: number, right: number) {
   const start = Math.max(0, Math.floor(top - spacing * 4.2));
   const end = Math.min(height, Math.ceil(top + spacing * 8.7));
-  const firstX = Math.max(Math.floor(spacing * 1.5), left + Math.floor(spacing * 4.15));
   const lastX = Math.min(width - Math.floor(spacing * 1.5) - 1, right - Math.floor(spacing * 0.4));
   const mask = adaptiveInk({ width, height, pixels }, true);
   const ink = new Uint8Array((end - start) * width);
@@ -97,13 +145,16 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
       y += gap - 1;
     }
   }
+  const signature = readTimeSignature(ink, width, top - start, spacing, left);
+  const firstX = Math.max(Math.floor(spacing * 1.5), left + Math.floor(spacing * 4.15),
+    signature ? Math.ceil(signature.right + spacing * 0.36) : 0);
   const samples = template(spacing, width);
   const coverage = (offsets: number[], center: number) => {
     let count = 0;
     for (const offset of offsets) count += ink[center + offset];
     return count / Math.max(1, offsets.length);
   };
-  const candidates: { x: number; y: number; step: number; hollow: boolean; strength: number }[] = [];
+  const candidates: { x: number; y: number; step: number; hollow: boolean; strength: number; stem?: Stem }[] = [];
   for (const step of steps) {
     for (const offset of [-0.14, 0, 0.14]) {
       const y = Math.round(top + ((10 - step) / 2 + offset) * spacing);
@@ -120,13 +171,14 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
         const solid = core >= 0.5 && Math.min(upper, lower) >= 0.53;
         const hollow = core <= 0.36;
         if (!solid && !hollow) continue;
-        if (!hasStem(ink, mask, width, x, y - start, start, spacing)) {
+        const stem = findStem(ink, mask, width, x, y - start, start, spacing);
+        if (!stem) {
           // Whole notes lack stems but still have a wider, closed outline than fingering digits.
           if (solid || Math.min(upper, lower) < 0.59 || edge >= 0.17 || x - left < 5 * spacing
             || coverage(samples.leftEdge, center) < 0.51 || coverage(samples.rightEdge, center) < 0.51) continue;
         }
         candidates.push({
-          x, y, step, hollow,
+          x, y, step, hollow, stem,
           strength: (upper + lower) / 2 - edge * 0.9 + (solid ? core : 1 - core) * 0.17 - Math.abs(offset) * 0.12,
         });
       }
@@ -138,7 +190,17 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
       selected.push(candidate);
     }
   }
-  return selected.sort((a, b) => a.x - b.x);
+  selected.sort((a, b) => a.x - b.x);
+  const beams = selected.map(({ stem }, index) => {
+    const next = selected[index + 1]?.stem;
+    return !!stem && !!next && joinedByBeam(mask, width, spacing, stem, next)
+      && !barBetween(mask, width, top, spacing, stem.x, next.x);
+  });
+  const notes = selected.map(({ x, y, step, hollow, stem }, index) => {
+    const duration: Note["duration"] = hollow ? (stem ? 2 : 4) : beams[index] || beams[index - 1] ? 0.5 : 1;
+    return { x, y, step, hollow, duration };
+  });
+  return { notes, timeSignature: signature?.meter };
 }
 
 function flattenStaff(raster: Raster, geometry: StaffGeometry) {
@@ -169,11 +231,10 @@ export function readStaffRasters(raster: Raster) {
     const crop = flattenStaff(raster, geometry);
     const { top, left, right } = crop;
     const { spacing, line, track } = geometry;
-    const notes: Note[] = findNotes(crop, top, spacing, left, right).map((note) => ({
-      id: crypto.randomUUID(), x: note.x, y: note.y, step: note.step,
-      accidental: null, hollow: note.hollow,
-    }));
-    return { crop, staff: { width: crop.width, height: crop.height, top, spacing, left, right, line, track, notes } };
+    const detected = findNotes(crop, top, spacing, left, right);
+    const notes: Note[] = detected.notes.map((note) => ({ ...note, id: crypto.randomUUID(), accidental: null }));
+    return { crop, staff: { width: crop.width, height: crop.height, top, spacing, left, right, line, track,
+      timeSignature: detected.timeSignature, notes } };
   });
 }
 
