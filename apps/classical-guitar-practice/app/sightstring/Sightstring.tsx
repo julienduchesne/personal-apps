@@ -687,8 +687,24 @@ function Review({ initial, editing, onBack, onSave, onDelete }: {
   </>;
 }
 
+const scoreSortOptions = [
+  ["title-asc", "Title A–Z"],
+  ["title-desc", "Title Z–A"],
+  ["notes-asc", "Fewest notes"],
+  ["notes-desc", "Most notes"],
+] as const;
+type ScoreSort = typeof scoreSortOptions[number][0];
+const titleOrder = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+function searchableTitle(title: string) {
+  return title.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase();
+}
+
 export function Sightstring() {
   const [scores, setScores] = useState<Score[]>([]);
+  const [loadingScores, setLoadingScores] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<ScoreSort>("title-asc");
   const [screen, setScreen] = useState<
     { name: "library" | "random" } | { name: "review"; score: Score; editing: boolean } | { name: "practice"; score: Score; random?: boolean }
   >({ name: "library" });
@@ -701,6 +717,19 @@ export function Sightstring() {
   const photos = useRef<HTMLInputElement>(null);
   const started = useRef(false);
   const locallyDeleted = useRef(new Set<string>());
+  const visibleScores = useMemo(() => {
+    const query = searchableTitle(search.trim());
+    return scores
+      .filter(({ title }) => searchableTitle(title).includes(query))
+      .map((score) => ({ score, noteCount: score.staves.reduce((total, staff) => total + staff.notes.length, 0) }))
+      .sort((a, b) => {
+        const titles = titleOrder.compare(a.score.title, b.score.title);
+        if (sort === "title-desc") return -titles;
+        if (sort === "notes-asc") return a.noteCount - b.noteCount || titles;
+        if (sort === "notes-desc") return b.noteCount - a.noteCount || titles;
+        return titles;
+      });
+  }, [scores, search, sort]);
 
   useEffect(() => {
     if (started.current) return;
@@ -727,6 +756,8 @@ export function Sightstring() {
       } catch {
         setScores((current) => [...current, ...local.filter(({ id }) => !locallyDeleted.current.has(id) && !current.some((score) => score.id === id))]);
         setError("Couldn’t load your saved scores. Reload to try again.");
+      } finally {
+        setLoadingScores(false);
       }
     }
     void loadLibrary();
@@ -794,8 +825,8 @@ export function Sightstring() {
               {error && <p role="alert">{error}</p>}
             </div>
           </section>
-          <section className={styles.library}>
-            <h2>Your scores</h2>
+          <section className={styles.library} aria-labelledby="practice-exercises-heading">
+            <h2 id="practice-exercises-heading">Practice exercises</h2>
             <div className={styles.scoreRow}>
               <div><strong>{exercise.title}</strong><p>Built-in exercise</p></div>
               <button className={styles.secondary} aria-label={`Practice ${exercise.title}`} disabled={importing}
@@ -805,26 +836,39 @@ export function Sightstring() {
               <div><strong>Random sightreading</strong><p>Choose strings and frets</p></div>
               <button className={styles.secondary} aria-label="Set up random sightreading" disabled={importing} onClick={random}>Set up</button>
             </div>
-            {scores.map((score) => {
+          </section>
+          <section className={styles.library} aria-labelledby="saved-scores-heading">
+            <h2 id="saved-scores-heading">Your scores</h2>
+            <div className={`${styles.fields} ${styles.libraryControls}`}>
+              <label>Search scores<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+              <label>Sort by<select value={sort} onChange={(event) => setSort(event.target.value as ScoreSort)}>
+                {scoreSortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select></label>
+            </div>
+            {loadingScores && <p className={styles.local} role="status">Loading scores…</p>}
+            {!loadingScores && visibleScores.length === 0 && (scores.length > 0 || !error) && <p className={styles.local} role="status">
+              {scores.length ? "No scores match your search." : "No saved scores yet."}
+            </p>}
+            {visibleScores.length > 0 && <ul className={styles.scoreList} role="list">{visibleScores.map(({ score, noteCount }) => {
               const images = score.pages ?? score.staves.flatMap((staff) => staff.image ? [staff.image] : []);
-              return <section className={styles.savedScore} key={score.id} aria-label={score.title}>
+              return <li className={styles.savedScore} key={score.id}><section aria-label={score.title}>
                 <div className={styles.scoreRow}>
-                  <div><strong>{score.title}</strong><p>{score.staves.reduce((count, staff) => count + staff.notes.length, 0)} notes</p></div>
+                  <div><strong>{score.title}</strong><p>{noteCount} {noteCount === 1 ? "note" : "notes"}</p></div>
                   <div className={styles.actions}>
                     <button className={styles.textButton} disabled={importing}
                       onClick={() => setScreen({ name: "review", score, editing: true })}>Edit</button>
                     <button className={styles.secondary} disabled={importing} onClick={() => setScreen({ name: "practice", score })}>Practice</button>
                   </div>
                 </div>
-                <div className={styles.actions}>
+                {images.length > 0 && <div className={styles.actions}>
                   {images.map((source, index) => {
                     const filename = `${score.title} - ${score.pages ? "page" : "staff"} ${index + 1}`;
                     return <a key={index} className={styles.textButton} href={downloadUrl(source, filename)}
                       download={`${filename}.jpg`}>{images.length === 1 ? "Download image" : `Download ${score.pages ? "page" : "staff"} ${index + 1}`}</a>;
                   })}
-                </div>
-              </section>;
-            })}
+                </div>}
+              </section></li>;
+            })}</ul>}
             <p className={styles.local}>Scores and photos are saved to your library. Microphone audio stays in this browser.</p>
           </section>
         </>}

@@ -48,6 +48,8 @@
 .sightstring button:not(:disabled):hover { filter: brightness(0.92); }
 
 .library h2 { font-size: 1.5rem; margin-bottom: 0.3rem; }
+.libraryControls { max-width: 36rem; margin-block: 0.7rem; }
+.scoreList { list-style: none; margin: 0; padding: 0; }
 .scoreRow { border-bottom: 1px solid var(--border); padding: 0.7rem 0; display: flex; gap: 0.7rem; justify-content: space-between; align-items: center; overflow-wrap: anywhere; }
 .local { margin-top: 0.8rem; font-size: 0.875rem; }
 .systems { display: grid; gap: 0.7rem; scroll-margin-block: 4rem 9rem; }

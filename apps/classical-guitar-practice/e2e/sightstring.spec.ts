@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { exerciseStaff, type Score } from "../app/sightstring/score";
 
 async function printedPage(page: Page, count = 3) {
   const image = await page.evaluate((noteCount) => {
@@ -27,6 +28,45 @@ async function printedPage(page: Page, count = 3) {
   }, count);
   return { name: "printed-exercise.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") };
 }
+
+test("searches and sorts saved scores separately from practice exercises", async ({ page }) => {
+  const saved = [["Prelude", 5], ["Étude 10", 2], ["Étude 2", 8]] as const;
+  const scores: Score[] = saved.map(([title, count]) => {
+    const id = crypto.randomUUID();
+    return {
+      id, title, key: 0, generated: true,
+      staves: [exerciseStaff(id, Array.from({ length: count }, () => ({ step: 2, accidental: null })))],
+    };
+  });
+  await page.route("**/api/sightstring", (route) => route.fulfill({ json: scores }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/sightstring");
+
+  const library = page.getByRole("region", { name: "Your scores" });
+  const exercises = page.getByRole("region", { name: "Practice exercises" });
+  const titles = library.getByRole("listitem").locator("strong");
+  const search = library.getByRole("searchbox", { name: "Search scores" });
+  const sort = library.getByLabel("Sort by");
+  await expect(titles).toHaveText(["Étude 2", "Étude 10", "Prelude"]);
+  await expect(library.getByText("Open String Study")).toHaveCount(0);
+  await expect(library.getByText("Random sightreading")).toHaveCount(0);
+  await expect(exercises.getByRole("button", { name: "Set up random sightreading" })).toBeVisible();
+
+  await sort.selectOption("title-desc");
+  await expect(titles).toHaveText(["Prelude", "Étude 10", "Étude 2"]);
+  await sort.selectOption("notes-desc");
+  await expect(titles).toHaveText(["Étude 2", "Prelude", "Étude 10"]);
+  await sort.selectOption("notes-asc");
+  await expect(titles).toHaveText(["Étude 10", "Prelude", "Étude 2"]);
+  await search.fill("ETUDE");
+  await expect(titles).toHaveText(["Étude 10", "Étude 2"]);
+  await search.fill("missing");
+  await expect(library.getByRole("status")).toHaveText("No scores match your search.");
+  await exercises.getByRole("button", { name: "Practice Open String Study" }).click();
+  await page.getByRole("button", { name: "Back to scores" }).click();
+  await expect(search).toHaveValue("missing");
+  await expect(sort).toHaveValue("notes-asc");
+});
 
 test("keeps a ledger-line note and skips the fingering 3 beside it", async ({ page }) => {
   await page.goto("/sightstring");
