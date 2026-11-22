@@ -1,4 +1,4 @@
-export function createPitchDetector(sampleRate: number, size: number) {
+function createPitchDetector(sampleRate: number, size: number) {
   const firstLag = Math.max(2, Math.floor(sampleRate / 1400));
   const lastLag = Math.min(Math.floor(size / 2), Math.floor(sampleRate / 72));
   const length = size - lastLag;
@@ -24,15 +24,131 @@ export function createPitchDetector(sampleRate: number, size: number) {
       const right = differences[lag + 1];
       const curvature = left - 2 * center + right;
       const fraction = curvature > 0 ? 0.5 * (left - right) / curvature : 0;
-      const pitch = 69 + 12 * Math.log2(sampleRate / ((lag + fraction) * 440));
+      const period = lag + fraction;
+      const pitch = 69 + 12 * Math.log2(sampleRate / (period * 440));
       const midi = Math.round(pitch);
-      return Math.abs(midi - pitch) <= 0.4 ? midi : null;
+      return Math.abs(midi - pitch) <= 0.4 ? { midi, period } : null;
     }
     return null;
   };
 }
 
-export async function listen(onPitch: (midi: number) => void, signal: AbortSignal, onEnded: () => void) {
+interface Pitch {
+  midi: number;
+  period: number;
+}
+
+function rms(samples: Float32Array) {
+  let energy = 0;
+  for (const value of samples) energy += value * value;
+  return Math.sqrt(energy / samples.length);
+}
+
+export function createListeningDetector(sampleRate: number) {
+  const step = Math.max(1, Math.floor(sampleRate / 22_050));
+  const bufferSize = 4096 * 2 ** Math.ceil(Math.log2(step));
+  const rate = sampleRate / step;
+  const size = Math.round(rate * 0.05);
+  const estimate = createPitchDetector(rate, size);
+  const samples = new Float32Array(bufferSize / step | 0);
+  const work = [new Float32Array(samples.length), new Float32Array(samples.length)];
+  const window = samples.subarray(samples.length - size);
+  const envelope = Float32Array.from({ length: size }, (_, i) => 0.5 - 0.5 * Math.cos(2 * Math.PI * i / size));
+  const ringing = new Map<number, Pitch & { level: number; replucked: boolean }>();
+  let previous: number | undefined;
+  let stable = 0;
+
+  function levelOf(period: number) {
+    const angle = 2 * Math.PI / period;
+    const sine = Math.sin(angle);
+    const cosine = Math.cos(angle);
+    let a = 0;
+    let b = 0;
+    let phaseCos = 1;
+    let phaseSin = 0;
+    for (let i = 0; i < size; i++) {
+      const value = window[i] * envelope[i];
+      a += value * phaseCos;
+      b += value * phaseSin;
+      const nextCos = phaseCos * cosine - phaseSin * sine;
+      phaseSin = phaseSin * cosine + phaseCos * sine;
+      phaseCos = nextCos;
+    }
+    return 4 * Math.hypot(a, b) / size;
+  }
+
+  function isolate(blockers: Pitch[]) {
+    let source = samples;
+    let first = 0;
+    for (const [index, { period }] of blockers.entries()) {
+      const delay = Math.floor(period);
+      const fraction = period - delay;
+      const output = work[index];
+      first += delay + 1;
+      for (let i = first; i < source.length; i++) {
+        const older = source[i - delay] * (1 - fraction) + source[i - delay - 1] * fraction;
+        output[i] = source[i] - older;
+      }
+      source = output;
+    }
+    return source.subarray(source.length - size);
+  }
+
+  function detect(input: Float32Array, expected: readonly number[]) {
+    if (!expected.length) return;
+    for (let i = 0; i < samples.length; i++) {
+      let sum = 0;
+      for (let j = 0; j < step; j++) sum += input[i * step + j];
+      samples[i] = sum / step;
+    }
+    const volume = rms(window);
+    for (const [midi, voice] of ringing) {
+      const level = levelOf(voice.period);
+      if (level < 0.002) {
+        ringing.delete(midi);
+        continue;
+      }
+      if (level > Math.max(voice.level * 1.32, voice.level + 0.004)) voice.replucked = true;
+      voice.level = Math.max(level, voice.level * 0.84);
+    }
+
+    const expectedPluck = (pitch: Pitch | null): pitch is Pitch =>
+      !!pitch && expected.includes(pitch.midi) && (ringing.get(pitch.midi)?.replucked ?? true);
+    const raw = volume >= 0.0018 ? estimate(window) : null;
+    let pitch = expectedPluck(raw) ? raw : null;
+    if (!pitch && volume >= 0.0018) {
+      // Subtract a period of each ringing string so a quieter new pluck can stand out.
+      const blockers: Pitch[] = [...ringing.values()]
+        .filter(({ midi }) => !expected.includes(midi))
+        .sort((a, b) => b.level - a.level)
+        .slice(0, 2);
+      if (raw && !expected.includes(raw.midi) && !blockers.some(({ midi }) => midi === raw.midi) && blockers.length < 2) {
+        blockers.push(raw);
+      }
+      if (blockers.length) {
+        const residual = isolate(blockers);
+        if (rms(residual) >= Math.max(0.0025, volume * 0.10)) {
+          const isolated = estimate(residual);
+          if (expectedPluck(isolated)) pitch = isolated;
+        }
+      }
+    }
+    stable = pitch?.midi === previous ? stable + 1 : 1;
+    previous = pitch?.midi;
+    if (pitch && stable >= 2) {
+      ringing.set(pitch.midi, { ...pitch, level: levelOf(pitch.period), replucked: false });
+      previous = undefined;
+      stable = 0;
+      return pitch.midi;
+    }
+  }
+
+  return { bufferSize, detect };
+}
+
+export async function listen(
+  onPitch: (midi: number) => void, expectedPitches: () => readonly number[], signal: AbortSignal, onEnded: () => void,
+) {
   if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
     throw new Error("Microphone access requires a supported browser and HTTPS.");
   }
@@ -56,54 +172,23 @@ export async function listen(onPitch: (midi: number) => void, signal: AbortSigna
     signal.throwIfAborted();
     stream.getAudioTracks().forEach((track) => track.addEventListener("ended", onEnded, { once: true }));
     const source = audio.createMediaStreamSource(stream);
+    const detector = createListeningDetector(audio.sampleRate);
     const analyser = audio.createAnalyser();
-    analyser.fftSize = 4096;
+    analyser.fftSize = detector.bufferSize;
     const mute = audio.createGain();
     mute.gain.value = 0;
     source.connect(analyser).connect(mute).connect(audio.destination);
 
     const samples = new Float32Array(analyser.fftSize);
-    const estimate = createPitchDetector(audio.sampleRate, samples.length);
     let checkedAt = -Infinity;
-    let attackAt = -Infinity;
-    let peak = 0;
-    let attack = 0;
-    let lastAttack = -1;
-    let previous: number | null = null;
-    let last: number | null = null;
-    let stable = 0;
-    let quiet = 0;
-
     const process = (now: number) => {
       if (signal.aborted) return;
       frame = requestAnimationFrame(process);
-      if (now - checkedAt < 28) return;
+      if (now - checkedAt < 15) return;
       checkedAt = now;
       analyser.getFloatTimeDomainData(samples);
-      const recent = samples.subarray(samples.length - 1024);
-      const rms = Math.sqrt(recent.reduce((sum, value) => sum + value * value, 0) / recent.length);
-      if (rms > 0.003 && rms > peak * 1.65 && now - attackAt > 70) {
-        attack++;
-        attackAt = now;
-      }
-      peak = Math.max(rms, peak * 0.82);
-      if (rms < 0.0018) {
-        quiet++;
-        if (quiet >= 2) {
-          previous = last = null;
-          stable = 0;
-        }
-        return;
-      }
-      quiet = 0;
-      const midi = estimate(samples);
-      stable = midi === previous ? stable + 1 : 1;
-      previous = midi;
-      if (midi !== null && stable >= 2 && (midi !== last || attack !== lastAttack)) {
-        last = midi;
-        lastAttack = attack;
-        onPitch(midi);
-      }
+      const midi = detector.detect(samples, expectedPitches());
+      if (midi !== undefined) onPitch(midi);
     };
     frame = requestAnimationFrame(process);
   } catch (error) {

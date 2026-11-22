@@ -264,3 +264,35 @@ test("shows solfège prompts and turns notes green when microphone audio matches
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByText("Play at your own pace")).toBeVisible();
 });
+
+test("recognizes a quick quieter note while the first string is still ringing", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      value: async () => {
+        const context = new AudioContext();
+        await context.resume();
+        const destination = context.createMediaStreamDestination();
+        window.addEventListener("sightstring-test-quick-plucks", () => {
+          const now = context.currentTime + 0.02;
+          for (const [frequency, volume, onset] of [[82.4069, 0.25, 0], [110, 0.08, 0.085]]) {
+            const string = context.createOscillator();
+            const amplitude = context.createGain();
+            string.frequency.value = frequency;
+            amplitude.gain.value = volume;
+            string.connect(amplitude).connect(destination);
+            string.start(now + onset);
+            string.stop(now + 0.5);
+          }
+        }, { once: true });
+        return destination.stream;
+      },
+    });
+  });
+  await page.goto("/sightstring");
+  await page.getByRole("button", { name: "Practice Open String Study", exact: true }).click();
+  await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.getByText("Play · Mi (E3)", { exact: true })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("sightstring-test-quick-plucks")));
+  await expect(page.getByText("Play · Ré (D4)", { exact: true })).toBeVisible();
+  await expect(page.getByText("2 of 16 notes played")).toBeVisible();
+});

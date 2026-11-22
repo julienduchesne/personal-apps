@@ -96,6 +96,7 @@ function Practice({ score, onBack }: { score: Score; onBack: () => void }) {
 function PracticeTrack({ score, track }: { score: Score; track: number }) {
   const events = useMemo(() => scoreEvents(score, track), [score, track]);
   const [progress, setProgress] = useState({ index: 0, correct: new Set<string>() });
+  const latest = useRef(progress);
   const [state, setState] = useState<"idle" | "starting" | "listening">("idle");
   const [error, setError] = useState("");
   const microphone = useRef<AbortController | null>(null);
@@ -136,13 +137,17 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
     setState("starting");
     try {
       await listen((midi) => {
-        setProgress((previous) => {
-          const current = events[previous.index];
-          const matches = current?.notes.filter((note) => soundingMidi(note, score.key) === midi && !previous.correct.has(note.id));
-          if (!matches?.length) return previous;
-          const correct = new Set([...previous.correct, ...matches.map((note) => note.id)]);
-          return { index: previous.index + Number(current.notes.every((note) => correct.has(note.id))), correct };
-        });
+        const previous = latest.current;
+        const current = events[previous.index];
+        const matches = current?.notes.filter((note) => soundingMidi(note, score.key) === midi && !previous.correct.has(note.id));
+        if (!matches?.length) return;
+        const correct = new Set([...previous.correct, ...matches.map((note) => note.id)]);
+        const next = { index: previous.index + Number(current.notes.every((note) => correct.has(note.id))), correct };
+        latest.current = next;
+        setProgress(next);
+      }, () => {
+        const { index, correct } = latest.current;
+        return events[index]?.notes.filter((note) => !correct.has(note.id)).map((note) => soundingMidi(note, score.key)) ?? [];
       }, controller.signal, () => {
         stop();
         setError("The microphone disconnected. Start listening again to continue.");
@@ -182,7 +187,9 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
         {error && <p role="alert">{error}</p>}
       </div>
       {!event ? <button className={styles.transportButton} onClick={() => {
-        setProgress({ index: 0, correct: new Set() });
+        const reset = { index: 0, correct: new Set<string>() };
+        latest.current = reset;
+        setProgress(reset);
         systems.current[events[0]?.staffIndex]?.scrollIntoView({ block: "nearest" });
       }}>Play again</button>
         : state === "listening" ? <button className={styles.transportButton} onClick={stop}>Pause</button>
