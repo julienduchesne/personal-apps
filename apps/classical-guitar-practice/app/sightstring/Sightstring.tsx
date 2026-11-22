@@ -27,6 +27,8 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
   const y = (position: number) => `${100 * position / staff.height}%`;
   const { spacing, imageCrop } = staff;
   const photo = showPhoto ? staff.image : undefined;
+  const barlines = staff.barlines ?? (!staff.image && staff.notes.some((note) => note.x > 330) ? [330] : []);
+  const notesById = new Map(staff.notes.map((note) => [note.id, note]));
   const imageStyle = photo && imageCrop ? {
     backgroundSize: `${x(imageCrop.width)} ${y(imageCrop.height)}`,
     backgroundPosition: `${100 * imageCrop.x / (imageCrop.width - staff.width || 1)}% ${100 * imageCrop.y / (imageCrop.height - staff.height || 1)}%`,
@@ -48,10 +50,23 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
           <i key={line} data-staff-line={line} className={styles.line}
             style={{ left: x(staff.left), width: x(staff.right - staff.left), top: y(staff.top + line * spacing) }} />
         ))}
-        {[staff.left, ...(!staff.image && staff.notes.some((note) => note.x > 330) ? [330] : []),
-          ...(!staff.image ? [staff.right - 5] : []), staff.right].map((bar) => (
-          <i key={bar} className={styles.bar} style={{ left: x(bar), top: y(staff.top), height: y(spacing * 4) }} />
+        {[staff.left, ...barlines, ...(!staff.image ? [staff.right - 5] : []), staff.right].map((bar) => (
+          <i key={bar} data-measure-bar={barlines.includes(bar) || undefined} className={styles.bar}
+            style={{ left: x(bar), top: y(staff.top), height: y(spacing * 4) }} />
         ))}
+        {staff.notes.some(({ beam }) => beam) && <svg className={styles.beams} viewBox={`0 0 ${staff.width} ${staff.height}`}>
+          {staff.notes.map(({ id, beam, stem }) => {
+            const target = beam && notesById.get(beam.to)?.stem;
+            if (!stem || !target || !beam) return null;
+            return <g key={id} data-beam-count={beam.count}>
+              {Array.from({ length: beam.count }, (_, level) => {
+                const offset = (stem.up ? 1 : -1) * spacing * (0.15 + 0.52 * level);
+                return <line key={level} x1={stem.x} y1={stem.y + offset} x2={target.x}
+                  y2={target.y + offset} strokeWidth={spacing * 0.3} />;
+              })}
+            </g>;
+          })}
+        </svg>}
         {/* Bravura’s G-clef baseline sits 4.5 staff spaces down in this image. */}
         <i data-clef="treble" className={styles.clef} style={{
           left: x(staff.left + spacing * 0.8), top: y(staff.top + 3 * spacing - 4.5 * spacing),
@@ -76,6 +91,8 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
         const noteY = !photo && staff.image ? staff.top + (10 - note.step) * spacing / 2 : note.y;
         const sign = displayAccidental(note, keySignature);
         const accidental = !photo && staff.image && sign === null && alterations.get(note.step) ? 0 : sign;
+        const stemX = note.stem?.x ?? noteX + (up ? 0.58 : -0.65) * spacing;
+        const stemY = note.stem?.y ?? noteY + (up ? -3 : 3) * spacing;
         alterations.set(note.step, sign ?? 0);
         const finger = fingers?.get(id);
         const ledgers: number[] = [];
@@ -98,9 +115,9 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
               {ledgers.map((step) => <i key={step} className={styles.line} style={{
                 left: x(noteX - spacing * 0.95), width: x(spacing * 1.9), top: y(staff.top + (10 - step) * spacing / 2),
               }} />)}
-              <i className={styles.stem} style={{
-                left: x(noteX + (up ? 0.58 : -0.65) * spacing), top: y(noteY + (up ? -3 : 0) * spacing), height: y(spacing * 3),
-              }} />
+              {note.duration !== 4 && <i className={styles.stem} style={{
+                left: x(stemX), top: y(Math.min(noteY, stemY)), height: y(Math.abs(noteY - stemY)),
+              }} />}
             </>}
             {(!photo || hit || current || reviewing) && (
               <i className={`${styles.head} ${note.hollow ? styles.hollow : ""}`} style={{
@@ -187,7 +204,7 @@ function Practice({ score, onBack, onGenerate, onSave }: {
         Show fingering
       </label>
     </div>
-    {hasPhoto && scoreView === "notation" && <p className={styles.location}>Shows detected pitches. Use the photo for rhythm and markings.</p>}
+    {hasPhoto && scoreView === "notation" && <p className={styles.location}>Use the photo to check any missing markings.</p>}
     {showFingering && <p className={styles.location}>Fretting fingers are suggested where none were set. 0 means open string.</p>}
     <PracticeTrack key={selected} score={score} track={selected} showPhoto={scoreView === "photo"} showFingering={showFingering} />
   </>;

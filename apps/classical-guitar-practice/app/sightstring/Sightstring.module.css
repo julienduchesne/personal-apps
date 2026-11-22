@@ -55,6 +55,7 @@
 .paper i { position: absolute; display: block; }
 .line { height: max(1px, 0.12cqw); background: #514b48; }
 .bar { width: max(1px, 0.16cqw); background: #514b48; }
+.beams { position: absolute; inset: 0; width: 100%; height: 100%; stroke: var(--ink); pointer-events: none; }
 .clef { background: url("/sightstring/treble-clef.png") center / 100% 100% no-repeat; }
 .meterDigit { font-family: Georgia, serif; font-style: normal; font-weight: 700; line-height: 1; transform: translate(-50%, -50%); }
 .meterFields { display: flex; flex-wrap: wrap; gap: 0.6rem; border: 0; }

@@ -91,13 +91,13 @@ export async function playScore(
           const note = audio.createBufferSource();
           const gain = audio.createGain();
           const when = start + event.start;
-          const release = when + Math.max(0.07, duration - 0.035);
+          const release = when + duration - Math.min(0.035, duration / 4);
           note.buffer = buffer;
           gain.gain.setValueAtTime(0.35 / Math.sqrt(event.pitches.length), when);
-          gain.gain.setTargetAtTime(0, release, 0.025);
+          gain.gain.setTargetAtTime(0, release, Math.min(0.025, duration / 6));
           note.connect(gain).connect(audio.destination);
           note.start(when);
-          note.stop(release + 0.08);
+          note.stop(when + duration + Math.min(0.06, duration / 3));
         }
       }
       const previous = playing;

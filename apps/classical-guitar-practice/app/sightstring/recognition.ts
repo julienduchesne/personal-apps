@@ -1,4 +1,4 @@
-import { steps, type Note, type Staff } from "./score";
+import { noteDurations, steps, type Note, type Staff } from "./score";
 import { readTimeSignature } from "./timeSignature";
 
 import { adaptiveInk, findStaves, type Raster, type StaffGeometry } from "./staffGeometry";
@@ -80,39 +80,53 @@ function findStem(ink: Uint8Array, mask: Uint8Array, width: number, x: number, y
 
 type Stem = NonNullable<ReturnType<typeof findStem>>;
 
-function joinedByBeam(mask: Uint8Array, width: number, spacing: number, a?: Stem, b?: Stem) {
-  if (!a || !b || a.direction !== b.direction || b.x - a.x < spacing || b.x - a.x > spacing * 8
-    || Math.abs(b.y - a.y) > (b.x - a.x) * 0.36 + spacing * 0.25) return false;
-  let joined = 0;
+function countBeams(mask: Uint8Array, width: number, spacing: number, a: Stem, b: Stem) {
+  if (a.direction !== b.direction || b.x - a.x < spacing || b.x - a.x > spacing * 8
+    || Math.abs(b.y - a.y) > (b.x - a.x) * 0.36 + spacing * 0.25) return 0;
+  const votes = [0, 0, 0, 0];
   const thickness = Math.max(2, Math.round(spacing * 0.23));
   for (let step = 1; step < 8; step++) {
     const x = Math.round(a.x + (b.x - a.x) * step / 8);
     const y = Math.round(a.y + (b.y - a.y) * step / 8);
-    let run = 0;
-    for (let offset = -Math.round(spacing * 0.24); offset <= Math.round(spacing * 0.65); offset++) {
-      run = mask[(y + offset * a.direction) * width + x] ? run + 1 : 0;
-      if (run >= thickness) {
-        joined++;
-        break;
-      }
+    let level = 0;
+    let previousEnd = -Infinity;
+    for (let offset = -Math.round(spacing * 0.24); offset <= Math.round(spacing * 2.45) && level < votes.length;) {
+      const start = offset++;
+      if (!mask[(y + start * a.direction) * width + x]) continue;
+      while (offset <= Math.round(spacing * 2.45) && mask[(y + offset * a.direction) * width + x]) offset++;
+      if (offset - start < thickness) continue;
+      // An isolated staff line further down a stem is not a secondary beam.
+      if (level === 0 ? start + thickness - 1 > Math.round(spacing * 0.65)
+        : start - previousEnd > Math.round(spacing * 0.39)) break;
+      votes[level++]++;
+      previousEnd = offset;
     }
   }
-  return joined >= 6;
+  const missing = votes.findIndex((count) => count < 6);
+  return missing === -1 ? votes.length : missing;
 }
 
-function barBetween(mask: Uint8Array, width: number, top: number, spacing: number, from: number, to: number) {
+function findBarlines(mask: Uint8Array, width: number, top: number, spacing: number, from: number, to: number, stems: number[]) {
   const height = Math.round(4 * spacing);
-  for (let x = Math.ceil(from + spacing * 0.55); x < to - spacing * 0.55; x += 2) {
+  const bars: { start: number; x: number; strength: number }[] = [];
+  for (let x = Math.ceil(from); x < to - spacing * 0.65; x++) {
+    if (stems.some((stem) => Math.abs(stem - x) < spacing * 0.48)) continue;
+    let strength = 0;
     for (const slope of [0, -0.11, 0.11]) {
       let hits = 0;
       for (let y = 0; y <= height; y += 2) {
         const center = (top + y) * width + Math.round(x + slope * (y - height / 2));
         hits += Number(Boolean(mask[center] || mask[center - 1] || mask[center + 1]));
       }
-      if (hits >= (Math.floor(height / 2) + 1) * 0.91) return true;
+      strength = Math.max(strength, hits);
     }
+    if (strength < (Math.floor(height / 2) + 1) * 0.91) continue;
+    const previous = bars.at(-1);
+    if (previous && x - previous.start < spacing * 0.65) {
+      if (strength >= previous.strength) Object.assign(previous, { x, strength });
+    } else bars.push({ start: x, x, strength });
   }
-  return false;
+  return bars.map(({ x }) => x);
 }
 
 function findNotes({ width, height, pixels }: Raster, top: number, spacing: number, left: number, right: number) {
@@ -191,16 +205,25 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
     }
   }
   selected.sort((a, b) => a.x - b.x);
+  const barlines = findBarlines(mask, width, top, spacing, firstX, right, selected.flatMap(({ stem }) => stem ? [stem.x] : []));
   const beams = selected.map(({ stem }, index) => {
     const next = selected[index + 1]?.stem;
-    return !!stem && !!next && joinedByBeam(mask, width, spacing, stem, next)
-      && !barBetween(mask, width, top, spacing, stem.x, next.x);
+    return stem && next && !barlines.some((bar) => bar > stem.x && bar < next.x)
+      ? countBeams(mask, width, spacing, stem, next) : 0;
   });
+  const ids = selected.map(() => crypto.randomUUID());
   const notes = selected.map(({ x, y, step, hollow, stem }, index) => {
-    const duration: Note["duration"] = hollow ? (stem ? 2 : 4) : beams[index] || beams[index - 1] ? 0.5 : 1;
-    return { x, y, step, hollow, duration };
+    const levels = Math.max(beams[index], beams[index - 1] ?? 0);
+    // A beam confirms a filled head even if a staff line obscures its center.
+    const openHead = hollow && !levels;
+    const duration = openHead ? (stem ? 2 : 4) : noteDurations[4 - levels];
+    return {
+      id: ids[index], x, y, step, hollow: openHead, duration, accidental: null,
+      stem: levels && stem ? { x: stem.x, y: stem.y, up: stem.direction > 0 } : undefined,
+      beam: beams[index] ? { to: ids[index + 1], count: beams[index] } : undefined,
+    } satisfies Note;
   });
-  return { notes, timeSignature: signature?.meter };
+  return { notes, barlines, timeSignature: signature?.meter };
 }
 
 function flattenStaff(raster: Raster, geometry: StaffGeometry) {
@@ -232,9 +255,8 @@ export function readStaffRasters(raster: Raster) {
     const { top, left, right } = crop;
     const { spacing, line, track } = geometry;
     const detected = findNotes(crop, top, spacing, left, right);
-    const notes: Note[] = detected.notes.map((note) => ({ ...note, id: crypto.randomUUID(), accidental: null }));
     return { crop, staff: { width: crop.width, height: crop.height, top, spacing, left, right, line, track,
-      timeSignature: detected.timeSignature, notes } };
+      timeSignature: detected.timeSignature, barlines: detected.barlines, notes: detected.notes } };
   });
 }
 

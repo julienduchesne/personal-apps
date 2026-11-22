@@ -1,5 +1,6 @@
 export type Accidental = -1 | 0 | 1 | null;
 export type Finger = 0 | 1 | 2 | 3 | 4;
+export const noteDurations = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4] as const;
 
 export const beatUnits = [1, 2, 4, 8, 16, 32] as const;
 
@@ -19,7 +20,9 @@ export interface Note {
   step: number;
   accidental: Accidental;
   hollow: boolean;
-  duration?: 0.5 | 1 | 2 | 4;
+  duration?: typeof noteDurations[number];
+  stem?: { x: number; y: number; up: boolean };
+  beam?: { to: string; count: number };
   finger?: Finger;
   voice?: "bass" | "melody";
 }
@@ -37,6 +40,7 @@ export interface Staff {
   line?: number;
   track?: number;
   timeSignature?: TimeSignature;
+  barlines?: number[];
   notes: Note[];
 }
 
@@ -105,7 +109,8 @@ export function scoreEvents(score: Score, track = 1) {
     const groups: { staffIndex: number; notes: Note[] }[] = [];
     for (const note of [...staff.notes].sort((a, b) => a.x - b.x)) {
       const last = groups.at(-1);
-      if (last && note.x - last.notes[0].x < staff.spacing * 1.08) last.notes.push(note);
+      if (last && note.x - last.notes[0].x < staff.spacing * 1.08
+        && !last.notes.some((head) => head.beam?.to === note.id)) last.notes.push(note);
       else groups.push({ staffIndex, notes: [note] });
     }
     return groups;

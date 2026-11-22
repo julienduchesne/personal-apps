@@ -1,5 +1,5 @@
 import { deleteBlob, listBlobs, readFileStream, readJson, uploadFile, writeJson } from "@repo/storage";
-import { beatUnits, exercise, leaderboardSize, type Meter, type Note, type PracticeAttempt, type Score, type Staff } from "@/app/sightstring/score";
+import { beatUnits, exercise, leaderboardSize, noteDurations, type Meter, type Note, type PracticeAttempt, type Score, type Staff } from "@/app/sightstring/score";
 
 const prefix = "sightstring/scores/";
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
@@ -33,7 +33,11 @@ function isNote(value: unknown, generated: boolean): value is Note {
     && range(value.step, -5, generated ? 20 : 16) && Number.isInteger(value.step)
     && (value.accidental === null || value.accidental === -1 || value.accidental === 0 || value.accidental === 1)
     && (value.finger === undefined || (range(value.finger, 0, 4) && Number.isInteger(value.finger)))
-    && (value.duration === undefined || value.duration === 0.5 || value.duration === 1 || value.duration === 2 || value.duration === 4)
+    && (value.duration === undefined || noteDurations.some((duration) => duration === value.duration))
+    && (value.stem === undefined || (object(value.stem) && range(value.stem.x, 0, 2200)
+      && range(value.stem.y, 0, 2200) && typeof value.stem.up === "boolean"))
+    && (value.beam === undefined || (object(value.beam) && typeof value.beam.to === "string" && uuid.test(value.beam.to)
+      && range(value.beam.count, 1, 4) && Number.isInteger(value.beam.count)))
     && (value.voice === undefined || (generated && (value.voice === "bass" || value.voice === "melody")))
     && typeof value.hollow === "boolean";
 }
@@ -57,6 +61,11 @@ function isScore(value: unknown, id: string): value is Score {
       || !Array.isArray(entry.notes) || entry.notes.length > 500 || !entry.notes.every((note) => isNote(note, generated))) return false;
     if (entry.timeSignature !== undefined && (!isMeter(entry.timeSignature) || !("x" in entry.timeSignature)
       || !range(entry.timeSignature.x, entry.left, entry.right))) return false;
+    const barlines = entry.barlines;
+    const left = entry.left;
+    const right = entry.right;
+    if (barlines !== undefined && (!Array.isArray(barlines) || barlines.length > 250
+      || !barlines.every((bar, index) => range(bar, left, right) && (index === 0 || bar > barlines[index - 1])))) return false;
     for (const [field, max] of [["page", 24], ["line", 250], ["track", 32]] as const) {
       if (entry[field] !== undefined && (!range(entry[field], 1, max) || !Number.isInteger(entry[field]))) return false;
     }

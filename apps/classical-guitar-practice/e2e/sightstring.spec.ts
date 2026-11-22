@@ -106,8 +106,67 @@ test("transcribes all 85 written pitches in the Moorish Dance photo", async ({ p
   await expect(next).toBeDisabled();
   await page.getByLabel("Beats per measure").fill("3");
   await page.getByLabel("Beat unit").selectOption("8");
+  const savedScore = page.waitForRequest((request) => request.method() === "PUT"
+    && /\/api\/sightstring\/[a-f0-9-]+$/.test(request.url()));
   await page.getByRole("button", { name: "Save and practice" }).click();
   await expect(page.getByText("Time signature 3/8")).toBeVisible();
+  const saved = (await savedScore).postDataJSON() as {
+    staves: { barlines: number[]; notes: { x: number; beam?: { count: number } }[] }[];
+  };
+  for (const [index, { barlines, notes: heads }] of saved.staves.entries()) {
+    const boundaries = [-Infinity, ...barlines, Infinity];
+    const counts = boundaries.slice(1).map((end, measure) =>
+      heads.filter(({ x }) => x >= boundaries[measure] && x < end).length);
+    expect(counts, `Measure breaks on line ${index + 1}`).toEqual(expected[index].split(" | ").map((bar) => bar.split(" ").length));
+    expect(heads.filter(({ beam }) => beam?.count === 1)).toHaveLength([8, 20, 14][index]);
+  }
+  await page.getByLabel("Score view").selectOption("notation");
+  const current = page.locator('[data-practice-line="current"]');
+  const nextLine = page.locator('[data-practice-line="next"]');
+  await expect(current.locator("[data-measure-bar]")).toHaveCount(3);
+  await expect(nextLine.locator("[data-measure-bar]")).toHaveCount(4);
+  await expect(current.locator('[data-beam-count="1"]')).toHaveCount(8);
+});
+
+test("detects multiple beams and renders their note lengths and measure breaks", async ({ page }) => {
+  await page.goto("/sightstring");
+  const data = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 900;
+    canvas.height = 400;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, 900, 400);
+    ctx.fillStyle = "black";
+    for (let line = 0; line < 5; line++) ctx.fillRect(45, 120 + line * 20, 810, 2);
+    for (const x of [310, 620, 854]) ctx.fillRect(x, 120, 2, 81);
+    for (const [count, xs] of [[2, [175, 235]], [4, [365, 425, 485, 545]], [3, [685, 745]]] as const) {
+      for (const x of xs) {
+        ctx.beginPath();
+        ctx.ellipse(x, 170, 13, 9, -0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(x + 10, 95, 3, 75);
+      }
+      for (let level = 0; level < count; level++) {
+        ctx.fillRect(xs[0] + 10, 95 + level * 9, xs.at(-1)! - xs[0] + 3, 6);
+      }
+    }
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  await page.getByLabel("Upload score photos").setInputFiles({
+    name: "fast-notes.png", mimeType: "image/png", buffer: Buffer.from(data, "base64"),
+  });
+  await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Edit note/ })).toHaveText(Array(8).fill("A4"));
+  const notes = page.locator("[data-note]");
+  expect(await notes.evaluateAll((marks) => marks.map((mark) => Number(mark.getAttribute("data-duration")))))
+    .toEqual([0.25, 0.25, 0.0625, 0.0625, 0.0625, 0.0625, 0.125, 0.125]);
+  await page.getByRole("button", { name: "Save and practice" }).click();
+  await page.getByLabel("Score view").selectOption("notation");
+  await expect(page.locator("[data-measure-bar]")).toHaveCount(2);
+  await expect(page.locator('[data-beam-count="2"] line')).toHaveCount(2);
+  await expect(page.locator('[data-beam-count="4"] line')).toHaveCount(12);
+  await expect(page.locator('[data-beam-count="3"] line')).toHaveCount(3);
 });
 
 test("plays a scanned score with a manually entered time signature", async ({ page }) => {
