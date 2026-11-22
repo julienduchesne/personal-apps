@@ -167,7 +167,7 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
   return selected.sort((a, b) => a.x - b.x);
 }
 
-export async function scanPage(file: File): Promise<Staff[]> {
+export async function scanPage(file: File, savedPhoto?: string): Promise<{ staves: Staff[]; photo: string }> {
   const url = URL.createObjectURL(file);
   const image = new Image();
   image.src = url;
@@ -190,16 +190,21 @@ export async function scanPage(file: File): Promise<Staff[]> {
   ctx.fillStyle = "white";
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0, width, height);
+  const photo = savedPhoto ?? canvas.toDataURL("image/jpeg", 0.86);
   const data = ctx.getImageData(0, 0, width, height);
   const gray = new Uint8Array(width * height);
   for (let i = 0; i < gray.length; i++) {
     gray[i] = (data.data[4 * i] * 77 + data.data[4 * i + 1] * 150 + data.data[4 * i + 2] * 29) >> 8;
   }
   const pixels = deskew({ width, height, pixels: gray });
-  for (let i = 0; i < pixels.length; i++) {
-    data.data[4 * i] = data.data[4 * i + 1] = data.data[4 * i + 2] = pixels[i];
+  let staffImage = photo;
+  if (pixels !== gray) {
+    for (let i = 0; i < pixels.length; i++) {
+      data.data[4 * i] = data.data[4 * i + 1] = data.data[4 * i + 2] = pixels[i];
+    }
+    ctx.putImageData(data, 0, 0);
+    staffImage = canvas.toDataURL("image/jpeg", 0.86);
   }
-  ctx.putImageData(data, 0, 0);
   const raster = { width, height, pixels };
   const lines = findLines(raster);
   const staves: Staff[] = [];
@@ -220,19 +225,17 @@ export async function scanPage(file: File): Promise<Staff[]> {
 
     const x = Math.max(0, left - Math.ceil(width * 0.035));
     const y = Math.max(0, Math.floor(top - spacing * 3.8));
-    const crop = document.createElement("canvas");
-    crop.width = Math.min(width, right + Math.ceil(width * 0.035)) - x;
-    crop.height = Math.min(height, Math.ceil(top + spacing * 9.1)) - y;
-    crop.getContext("2d")!.drawImage(canvas, x, y, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    const cropWidth = Math.min(width, right + Math.ceil(width * 0.035)) - x;
+    const cropHeight = Math.min(height, Math.ceil(top + spacing * 9.1)) - y;
     const notes: Note[] = findNotes(raster, top, spacing, left, right).map((note) => ({
       id: crypto.randomUUID(), x: note.x - x, y: note.y - y, step: note.step,
       accidental: null, hollow: note.hollow,
     }));
     staves.push({
-      image: crop.toDataURL("image/jpeg", 0.88), width: crop.width, height: crop.height,
+      image: staffImage, imageCrop: { x, y, width, height }, width: cropWidth, height: cropHeight,
       top: top - y, spacing, left: left - x, right: right - x, notes,
     });
   }
   if (!staves.length) throw new Error("No five-line staff found. Photograph a flat, well-lit page straight on.");
-  return staves;
+  return { staves, photo };
 }

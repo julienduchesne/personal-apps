@@ -11,6 +11,7 @@ export interface Note {
 
 export interface Staff {
   image?: string;
+  imageCrop?: { x: number; y: number; width: number; height: number };
   width: number;
   height: number;
   left: number;
@@ -24,6 +25,7 @@ export interface Score {
   id: string;
   title: string;
   key: number;
+  pages?: string[];
   staves: Staff[];
 }
 

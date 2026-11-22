@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { listScores, saveScore } from "./library";
+import { downloadUrl, listScores, loadScanPhoto, recoverLocalScores, saveScore } from "./library";
 import { listen } from "./microphone";
 import { scanPage } from "./recognition";
 import { exercise, keys, noteName, scoreEvents, soundingMidi, steps, type Note, type Score, type Staff } from "./score";
@@ -17,7 +17,11 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
 }) {
   const x = (position: number) => `${100 * position / staff.width}%`;
   const y = (position: number) => `${100 * position / staff.height}%`;
-  const { spacing } = staff;
+  const { spacing, imageCrop } = staff;
+  const imageStyle = imageCrop ? {
+    backgroundSize: `${x(imageCrop.width)} ${y(imageCrop.height)}`,
+    backgroundPosition: `${100 * imageCrop.x / (imageCrop.width - staff.width || 1)}% ${100 * imageCrop.y / (imageCrop.height - staff.height || 1)}%`,
+  } : {};
   function pick(event: MouseEvent<HTMLDivElement>) {
     const region = event.currentTarget.getBoundingClientRect();
     onPick?.((event.clientX - region.left) * staff.width / region.width,
@@ -26,6 +30,7 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
   return (
     <div className={styles.paper} style={{
       aspectRatio: `${staff.width} / ${staff.height}`,
+      ...imageStyle,
       backgroundImage: staff.image ? `url("${staff.image}")` : undefined,
     }} onClick={onPick ? pick : undefined} aria-hidden="true">
       {!staff.image && <>
@@ -214,7 +219,7 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
     setError("");
     setSaving(true);
     try { await onSave({ ...score, title: score.title.trim() }); }
-    catch { setError("This browser couldn’t save the score. Check available storage and try again."); }
+    catch { setError("Couldn’t save the score to your library. Try again."); }
     finally { setSaving(false); }
   }
 
@@ -225,7 +230,7 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
       <p>Check the detected notes and set the key signature. Tap a note to correct its pitch or accidental.</p>
     </header>
     <div className={styles.fields}>
-      <label>Score title<input value={score.title} onChange={(e) => setScore({ ...score, title: e.target.value })} /></label>
+      <label>Score title<input maxLength={200} value={score.title} onChange={(e) => setScore({ ...score, title: e.target.value })} /></label>
       <label>Key signature<select value={score.key} onChange={(e) => setScore({ ...score, key: Number(e.target.value) })}>
         {keys.map((key, i) => <option key={key} value={i - 7}>{key} major</option>)}
       </select></label>
@@ -280,38 +285,82 @@ export function Sightstring() {
   const [screen, setScreen] = useState<{ name: "library" } | { name: "review" | "practice"; score: Score }>({ name: "library" });
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
+  const [rescanFor, setRescanFor] = useState<string | null>(null);
   const camera = useRef<HTMLInputElement>(null);
   const photos = useRef<HTMLInputElement>(null);
+  const replacement = useRef<Score | undefined>(undefined);
+  const started = useRef(false);
 
   useEffect(() => {
-    void listScores().then(setScores).catch(() => setError("Saved scores are unavailable in this browser."));
+    if (started.current) return;
+    started.current = true;
+    async function loadLibrary() {
+      const local = await recoverLocalScores().catch(() => []);
+      try {
+        const stored = await listScores();
+        const missing = local.filter(({ id }) => !stored.some((score) => score.id === id));
+        const migrated = await Promise.allSettled(missing.map(saveScore));
+        const library = [...stored, ...missing.map((score, i) => {
+          const result = migrated[i];
+          return result.status === "fulfilled" ? result.value : score;
+        })];
+        setScores((current) => [...current, ...library.filter(({ id }) => !current.some((score) => score.id === id))]);
+        if (migrated.some(({ status }) => status === "rejected")) {
+          setError("Some scores are still on this device. Edit and save them to retry.");
+        }
+      } catch {
+        setScores(local);
+        setError("Couldn’t load your saved scores. Reload to try again.");
+      }
+    }
+    void loadLibrary();
   }, []);
 
   function back() { setScreen({ name: "library" }); }
 
-  async function importPhotos(files: FileList | null) {
-    if (!files?.length) return;
+  function choose(input: HTMLInputElement | null, score?: Score) {
+    replacement.current = score;
+    input?.click();
+  }
+
+  async function scan(loadFiles: () => Promise<File[]>, existing?: Score, savedPhotos?: string[]) {
     setError("");
     setImporting(true);
     try {
+      const files = await loadFiles();
+      if (files.length > 24) throw new Error("Choose up to 24 pages at a time.");
       const staves: Staff[] = [];
-      for (const [index, file] of Array.from(files).entries()) {
-        try { staves.push(...await scanPage(file)); }
-        catch (cause) {
+      const pages: string[] = [];
+      for (const [index, file] of files.entries()) {
+        try {
+          const scan = await scanPage(file, savedPhotos?.[index]);
+          pages.push(scan.photo);
+          staves.push(...scan.staves);
+        } catch (cause) {
           throw new Error(`Page ${index + 1}: ${cause instanceof Error ? cause.message : "Couldn’t read this photo."}`);
         }
       }
-      setScreen({ name: "review", score: { id: crypto.randomUUID(), title: "Untitled score", key: 0, staves } });
+      setRescanFor(null);
+      setScreen({ name: "review", score: {
+        id: existing?.id ?? crypto.randomUUID(), title: existing?.title ?? "Untitled score",
+        key: existing?.key ?? 0, pages, staves,
+      } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn’t read the score."); }
     finally { setImporting(false); }
+  }
+
+  function importPhotos(files: FileList | null) {
+    if (!files?.length) return;
+    const selected = Array.from(files);
+    void scan(async () => selected, replacement.current);
   }
 
   return <div className={styles.sightstring}>
     {screen.name === "practice" ? <Practice score={screen.score} onBack={back} />
       : screen.name === "review" ? <Review initial={screen.score} onBack={back} onSave={async (score) => {
-        await saveScore(score);
-        setScores((existing) => [score, ...existing.filter((entry) => entry.id !== score.id)]);
-        setScreen({ name: "practice", score });
+        const saved = await saveScore(score);
+        setScores((existing) => [saved, ...existing.filter((entry) => entry.id !== saved.id)]);
+        setScreen({ name: "practice", score: saved });
       }} />
         : <>
           <header className={styles.heading}>
@@ -322,8 +371,8 @@ export function Sightstring() {
             <StaffPaper staff={exercise.staves[0]} correct={new Set(["demo-0-0", "demo-0-1", "demo-0-2"])}
               active={new Set(["demo-0-3"])} />
             <div className={styles.importActions}>
-              <button className={styles.primary} disabled={importing} onClick={() => camera.current?.click()}>Take a photo</button>
-              <button className={styles.secondary} disabled={importing} onClick={() => photos.current?.click()}>Choose photos</button>
+              <button className={styles.primary} disabled={importing} onClick={() => choose(camera.current)}>Take a photo</button>
+              <button className={styles.secondary} disabled={importing} onClick={() => choose(photos.current)}>Choose photos</button>
               <input hidden ref={camera} aria-label="Take a score photo" type="file" accept="image/*" capture="environment"
                 onChange={(e) => { void importPhotos(e.target.files); e.target.value = ""; }} />
               <input hidden ref={photos} aria-label="Upload score photos" type="file" accept="image/*" multiple
@@ -336,16 +385,42 @@ export function Sightstring() {
             <h2>Your scores</h2>
             <div className={styles.scoreRow}>
               <div><strong>{exercise.title}</strong><p>Built-in exercise</p></div>
-              <button className={styles.secondary} onClick={() => setScreen({ name: "practice", score: exercise })}>Practice</button>
+              <button className={styles.secondary} aria-label={`Practice ${exercise.title}`} disabled={importing}
+                onClick={() => setScreen({ name: "practice", score: exercise })}>Practice</button>
             </div>
-            {scores.map((score) => <div className={styles.scoreRow} key={score.id}>
-              <div><strong>{score.title}</strong><p>{score.staves.reduce((count, staff) => count + staff.notes.length, 0)} notes</p></div>
-              <div className={styles.actions}>
-                <button className={styles.textButton} onClick={() => setScreen({ name: "review", score })}>Edit</button>
-                <button className={styles.secondary} onClick={() => setScreen({ name: "practice", score })}>Practice</button>
-              </div>
-            </div>)}
-            <p className={styles.local}>Scores and audio stay in this browser.</p>
+            {scores.map((score) => {
+              const images = score.pages ?? score.staves.flatMap((staff) => staff.image ? [staff.image] : []);
+              return <section className={styles.savedScore} key={score.id} aria-label={score.title}>
+                <div className={styles.scoreRow}>
+                  <div><strong>{score.title}</strong><p>{score.staves.reduce((count, staff) => count + staff.notes.length, 0)} notes</p></div>
+                  <div className={styles.actions}>
+                    <button className={styles.textButton} disabled={importing} onClick={() => setScreen({ name: "review", score })}>Edit</button>
+                    <button className={styles.secondary} disabled={importing} onClick={() => setScreen({ name: "practice", score })}>Practice</button>
+                  </div>
+                </div>
+                <div className={styles.actions}>
+                  <button className={styles.textButton} disabled={importing} aria-expanded={rescanFor === score.id}
+                    onClick={() => setRescanFor(rescanFor === score.id ? null : score.id)}>Rescan</button>
+                  {images.map((source, index) => {
+                    const filename = `${score.title} - ${score.pages ? "page" : "staff"} ${index + 1}`;
+                    return <a key={index} className={styles.textButton} href={downloadUrl(source, filename)}
+                      download={`${filename}.jpg`}>{images.length === 1 ? "Download image" : `Download ${score.pages ? "page" : "staff"} ${index + 1}`}</a>;
+                  })}
+                </div>
+                {rescanFor === score.id && <div className={styles.rescan}>
+                  <p>Review the new scan before replacing this score’s notes.</p>
+                  <div className={styles.actions}>
+                    {!!score.pages?.length && <button className={styles.primary} disabled={importing} onClick={() => {
+                      const sources = score.pages ?? [];
+                      void scan(() => Promise.all(sources.map(loadScanPhoto)), score, sources);
+                    }}>Rescan saved photos</button>}
+                    <button className={styles.secondary} disabled={importing} onClick={() => choose(camera.current, score)}>Take a new photo</button>
+                    <button className={styles.secondary} disabled={importing} onClick={() => choose(photos.current, score)}>Choose replacement photos</button>
+                  </div>
+                </div>}
+              </section>;
+            })}
+            <p className={styles.local}>Scores and photos are saved to your library. Microphone audio stays in this browser.</p>
           </section>
         </>}
   </div>;

@@ -91,3 +91,10 @@
   .fields { grid-template-columns: 1fr; }
   .transportButton { width: 100%; }
 }
+
+.savedScore { padding-bottom: 0.55rem; border-bottom: 1px solid var(--border); }
+.savedScore .scoreRow { border-bottom: 0; padding-bottom: 0; }
+.sightstring a.textButton { display: inline-flex; align-items: center; }
+.textButton:disabled { cursor: default; opacity: 0.48; }
+.rescan { padding: 0.75rem; border-radius: 0.42rem; background: #faf4e9; }
+.rescan p { margin-bottom: 0.5rem; color: var(--muted); }

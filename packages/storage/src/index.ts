@@ -23,7 +23,7 @@ function toKey(pathname: string): string {
   return pathname.startsWith(KEY_PREFIX) ? pathname : `${KEY_PREFIX}${pathname}`;
 }
 
-export async function readJson<T>(pathname: string): Promise<T | null> {
+export async function readJson<T>(pathname: string, { strict = false } = {}): Promise<T | null> {
   try {
     const result = await s3.send(
       new GetObjectCommand({ Bucket: BUCKET, Key: toKey(pathname) })
@@ -31,7 +31,8 @@ export async function readJson<T>(pathname: string): Promise<T | null> {
     const text = await result.Body?.transformToString();
     if (!text) return null;
     return JSON.parse(text) as T;
-  } catch {
+  } catch (error) {
+    if (strict && !(error instanceof Error && error.name === "NoSuchKey")) throw error;
     return null;
   }
 }
@@ -94,16 +95,22 @@ export async function readFileStream(pathname: string): Promise<ReadableStream |
   }
 }
 
-export async function listBlobs(prefix: string): Promise<string[]> {
+export async function listBlobs(prefix: string, { strict = false } = {}): Promise<string[]> {
   try {
-    const result = await s3.send(
-      new ListObjectsV2Command({ Bucket: BUCKET, Prefix: toKey(prefix) })
-    );
-    return (result.Contents ?? [])
-      .map((obj) => obj.Key ?? "")
-      .filter(Boolean)
-      .map((key) => key.replace(KEY_PREFIX, ""));
-  } catch {
+    const keys: string[] = [];
+    let continuation: string | undefined;
+    do {
+      const result = await s3.send(new ListObjectsV2Command({
+        Bucket: BUCKET, Prefix: toKey(prefix), ContinuationToken: continuation,
+      }));
+      for (const { Key } of result.Contents ?? []) {
+        if (Key) keys.push(Key.slice(KEY_PREFIX.length));
+      }
+      continuation = result.NextContinuationToken;
+    } while (continuation);
+    return keys;
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 }

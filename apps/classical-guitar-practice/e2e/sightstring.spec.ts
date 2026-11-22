@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { expect, test, type Page } from "@playwright/test";
 
-test("recognizes a photographed staff, saves corrections, and keeps it after reload", async ({ page }) => {
-  await page.goto("/sightstring");
-  const image = await page.evaluate(() => {
+async function printedPage(page: Page, count = 3) {
+  const image = await page.evaluate((noteCount) => {
     const canvas = document.createElement("canvas");
     canvas.width = 900;
     canvas.height = 400;
@@ -11,7 +11,8 @@ test("recognizes a photographed staff, saves corrections, and keeps it after rel
     context.fillRect(0, 0, 900, 400);
     context.fillStyle = "black";
     for (let line = 0; line < 5; line++) context.fillRect(50, 120 + line * 20 - 1, 800, 2);
-    for (const [x, y, up] of [[180, 200, true], [358, 150, true], [536, 130, false]] as const) {
+    const notes = [[180, 200, true], [358, 150, true], [536, 130, false]] as const;
+    for (const [x, y, up] of notes.slice(0, noteCount)) {
       context.save();
       context.translate(x, y);
       context.rotate(-0.28);
@@ -22,20 +23,103 @@ test("recognizes a photographed staff, saves corrections, and keeps it after rel
       context.fillRect(x + (up ? 11 : -13), y + (up ? -62 : 0), 2.5, 62);
     }
     return canvas.toDataURL("image/png").split(",")[1];
-  });
+  }, count);
+  return { name: "printed-exercise.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") };
+}
 
-  await page.getByLabel("Upload score photos").setInputFiles({ name: "printed-exercise.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") });
+test("saves a score and its photo across browsers and supports downloading and rescanning", async ({ page, browser, baseURL }) => {
+  const title = `Printed exercise ${crypto.randomUUID()}`;
+  await page.goto("/sightstring");
+  await page.getByLabel("Upload score photos").setInputFiles(await printedPage(page));
   await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
   await expect(page.getByText("3 notes", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit note 1 E4" }).click();
   await page.getByLabel("Accidental").selectOption("1");
   await page.getByRole("button", { name: "Save note" }).click();
   await expect(page.getByRole("button", { name: "Edit note 1 E♯4" })).toBeVisible();
-  await page.getByLabel("Score title").fill("Printed exercise");
+  await page.getByLabel("Score title").fill(title);
   await page.getByRole("button", { name: "Save and practice" }).click();
-  await expect(page.getByRole("heading", { name: "Printed exercise" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  const context = await browser.newContext({ baseURL, storageState: await page.context().storageState() });
+  try {
+    const other = await context.newPage();
+    await other.goto("/sightstring");
+    const saved = other.getByRole("region", { name: title });
+    await expect(saved).toBeVisible();
+    const downloadEvent = other.waitForEvent("download");
+    await saved.getByRole("link", { name: "Download image" }).click();
+    const download = await downloadEvent;
+    expect(download.suggestedFilename()).toBe(`${title} - page 1.jpg`);
+    const bytes = await readFile((await download.path())!);
+    expect(bytes.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+    const dimensions = await other.evaluate(async (data) => {
+      const image = await createImageBitmap(new Blob([Uint8Array.from(data)], { type: "image/jpeg" }));
+      return [image.width, image.height];
+    }, [...bytes]);
+    expect(dimensions).toEqual([900, 400]);
+
+    await saved.getByRole("button", { name: "Rescan", exact: true }).click();
+    await other.getByRole("button", { name: "Rescan saved photos" }).click();
+    await expect(other.getByRole("button", { name: "Edit note 1 E4" })).toBeVisible();
+    await other.getByRole("button", { name: "Back to scores" }).click();
+    await saved.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(other.getByRole("button", { name: "Edit note 1 E♯4" })).toBeVisible();
+    await other.getByRole("button", { name: "Back to scores" }).click();
+
+    await saved.getByRole("button", { name: "Rescan", exact: true }).click();
+    const chooser = other.waitForEvent("filechooser");
+    await other.getByRole("button", { name: "Choose replacement photos" }).click();
+    await (await chooser).setFiles(await printedPage(other, 2));
+    await expect(other.getByText("2 notes", { exact: true })).toBeVisible();
+    await other.getByRole("button", { name: "Save and practice" }).click();
+    await expect(other.getByRole("heading", { name: title })).toBeVisible();
+    await other.reload();
+    await expect(saved).toHaveCount(1);
+    await expect(saved.getByText("2 notes", { exact: true })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test("copies scores from this browser’s old library into object storage", async ({ page, browser, baseURL }) => {
+  const title = `Local study ${crypto.randomUUID()}`;
+  await page.goto("/sightstring");
+  await page.evaluate(async (title) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 500;
+    canvas.height = 180;
+    const score = {
+      id: crypto.randomUUID(), title, key: 0,
+      staves: [{
+        image: canvas.toDataURL("image/jpeg"), width: 500, height: 180, left: 10, right: 490, top: 40, spacing: 12,
+        notes: [{ id: crypto.randomUUID(), x: 100, y: 65, step: 6, accidental: null, hollow: false }],
+      }],
+    };
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open("sightstring", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("scores", { keyPath: "id" });
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const transaction = db.transaction("scores", "readwrite");
+        transaction.objectStore("scores").put(score);
+        transaction.oncomplete = () => { db.close(); resolve(); };
+        transaction.onerror = () => { db.close(); reject(transaction.error); };
+      };
+    });
+  }, title);
   await page.reload();
-  await expect(page.getByText("Printed exercise", { exact: true })).toBeVisible();
+  const migrated = page.getByRole("region", { name: title }).getByRole("link", { name: "Download image" });
+  await expect(migrated).toHaveAttribute("href", /^\/api\/sightstring\//);
+
+  const context = await browser.newContext({ baseURL, storageState: await page.context().storageState() });
+  try {
+    const other = await context.newPage();
+    await other.goto("/sightstring");
+    await expect(other.getByRole("region", { name: title })).toBeVisible();
+  } finally {
+    await context.close();
+  }
 });
 
 test("turns the expected note green when microphone audio matches", async ({ page }) => {
@@ -57,7 +141,7 @@ test("turns the expected note green when microphone audio matches", async ({ pag
     });
   });
   await page.goto("/sightstring");
-  await page.getByRole("button", { name: "Practice", exact: true }).click();
+  await page.getByRole("button", { name: "Practice Open String Study", exact: true }).click();
   await page.getByRole("button", { name: "Start listening" }).click();
   await expect(page.getByText("1 of 16 notes played")).toBeVisible();
   await expect(page.locator('[data-note="demo-0-0"]')).toHaveAttribute("data-status", "correct");
