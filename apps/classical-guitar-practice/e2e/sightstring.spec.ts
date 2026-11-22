@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 async function printedPage(page: Page, count = 3) {
@@ -66,6 +67,28 @@ test("keeps a ledger-line note and skips the fingering 3 beside it", async ({ pa
   await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Edit note/ })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Edit note 1 C4" })).toBeVisible();
+});
+
+test("transcribes all 85 written pitches in the Moorish Dance photo", async ({ page }) => {
+  const expected = [
+    "E3 E4 E3 E4 | E3 E4 E4 E3 E4 | F3 G3 A3 C4 B3 A3 G3 F3 | E3 E4 E4 E3 E4",
+    "F3 G3 A3 C4 B3 A3 G3 F3 | E3 E4 E4 E3 E4 | A3 B3 C4 B3 D4 C4 B3 C4 | A3 E4 E4 A3 E4 | A3 B3 C4 B3 D4 C4 B3 A3",
+    "G3 D4 D4 G3 D4 | G3 A3 B3 D4 C4 B3 A3 G3 | F3 C4 C4 F3 C4 | F3 G3 A3 C4 B3 A3 G3 F3 | E3 E4 E3",
+  ];
+
+  await page.goto("/sightstring");
+  await page.getByLabel("Upload score photos").setInputFiles(resolve(__dirname, "fixtures", "IMG_4218.jpeg"));
+  await expect(page.getByRole("heading", { name: "Review scan" })).toBeVisible();
+  const notes = page.getByRole("button", { name: /^Edit note \d+ / });
+  const next = page.getByRole("button", { name: "Next", exact: true });
+  for (const [index, line] of expected.entries()) {
+    const number = index + 1;
+    await expect(page.getByText(`Staff ${number} of ${expected.length}`)).toBeVisible();
+    await expect(page.getByText(`Page 1 · Line ${number} · Track 1`)).toBeVisible();
+    await expect(notes, `Written pitches on line ${number}`).toHaveText(line.split(/[\s|]+/));
+    if (number < expected.length) await next.click();
+  }
+  await expect(next).toBeDisabled();
 });
 
 test("saves a score and its photo across browsers and supports downloading and rescanning", async ({ page, browser, baseURL }) => {

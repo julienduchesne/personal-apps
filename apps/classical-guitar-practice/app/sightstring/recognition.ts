@@ -82,6 +82,21 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
       if (x - first <= Math.floor(spacing * 1.88)) ink.fill(1, (y - start) * width + first, (y - start) * width + x);
     }
   }
+  // Preserve the part of a notehead that crosses a staff or ledger line.
+  const maxLineThickness = Math.max(2, Math.round(spacing * 0.25));
+  for (let x = 0; x < width; x++) {
+    for (let y = start + 1; y < end - 1; y++) {
+      const position = (y - start) * width + x;
+      if (ink[position] || !ink[position - width] || !mask[y * width + x]) continue;
+      let gap = 1;
+      while (gap <= maxLineThickness && y + gap < end && !ink[position + gap * width]
+        && mask[(y + gap) * width + x]) gap++;
+      if (gap <= maxLineThickness && ink[position + gap * width]) {
+        for (let offset = 0; offset < gap; offset++) ink[position + offset * width] = 1;
+      }
+      y += gap - 1;
+    }
+  }
   const samples = template(spacing, width);
   const coverage = (offsets: number[], center: number) => {
     let count = 0;
