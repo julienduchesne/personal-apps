@@ -16,9 +16,11 @@ describe("random sightreading", () => {
   it("can generate open strings or a single high fret without clipping the notes", () => {
     const open = generateRandomExercise({ ...defaults, strings: [6], firstFret: 0, lastFret: 0 });
     expect(open.staves.flatMap(({ notes }) => notes).every((note) => soundingMidi(note, open.key) === 40)).toBe(true);
+    expect(open.staves[0].notes[0].finger).toBe(0);
     const high = generateRandomExercise({ ...defaults, strings: [1], firstFret: 18, lastFret: 18 });
     const notes = high.staves.flatMap(({ notes }) => notes);
     expect(notes.every((note) => soundingMidi(note, high.key) === 82 && note.y >= 20)).toBe(true);
+    expect(notes[0].finger).toBe(1);
     expect(practiceNoteName(notes[0], high.key)).toBe("Si♭ (B♭6)");
   });
 
@@ -67,6 +69,7 @@ describe("random sightreading", () => {
     expect(events[0].notes.map((note) => [note.voice, soundingMidi(note, score.key)]))
       .toEqual([["bass", 40], ["melody", 55]]);
     expect(events[0].notes[0].x).toBe(events[0].notes[1].x);
+    expect(events[0].notes.map(({ finger }) => finger)).toEqual([0, 0]);
     expect(events.flatMap(({ notes }) => notes.filter(({ voice }) => voice === "melody"))
       .map((note) => soundingMidi(note, score.key))).toEqual([55, 55, 55, 55]);
     expect(scoreEvents(generateRandomExercise({ ...settings, withBass: false })).every(({ notes }) => notes.length === 1)).toBe(true);

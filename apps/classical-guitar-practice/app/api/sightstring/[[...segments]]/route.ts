@@ -27,6 +27,7 @@ function isNote(value: unknown, generated: boolean): value is Note {
     && range(value.x, 0, 2200) && range(value.y, 0, 2200)
     && range(value.step, -5, generated ? 20 : 16) && Number.isInteger(value.step)
     && (value.accidental === null || value.accidental === -1 || value.accidental === 0 || value.accidental === 1)
+    && (value.finger === undefined || (range(value.finger, 0, 4) && Number.isInteger(value.finger)))
     && (value.voice === undefined || (generated && (value.voice === "bass" || value.voice === "melody")))
     && typeof value.hollow === "boolean";
 }

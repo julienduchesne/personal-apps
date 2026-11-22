@@ -76,11 +76,26 @@ test("saves a score and its photo across browsers and supports downloading and r
   await expect(page.getByText("3 notes", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit note 1 E4" }).click();
   await page.getByLabel("Accidental").selectOption("1");
+  await page.getByLabel("Fingering").selectOption("3");
   await page.getByRole("button", { name: "Save note" }).click();
   await expect(page.getByRole("button", { name: "Edit note 1 E♯4" })).toBeVisible();
   await page.getByLabel("Score title").fill(title);
   await page.getByRole("button", { name: "Save and practice" }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  const current = page.locator('[data-practice-line="current"]');
+  const view = page.getByLabel("Score view");
+  const fingers = page.getByRole("checkbox", { name: "Show fingering" });
+  await expect(view).toHaveValue("photo");
+  await expect(current.locator('[data-score-view="photo"]')).toBeVisible();
+  await view.selectOption("notation");
+  await expect(current.locator('[data-score-view="notation"] [data-clef]')).toBeVisible();
+  await expect(current.locator('[data-status="current"]')).toHaveCount(1);
+  await fingers.check();
+  await expect(current.locator('[data-status="current"] [data-finger="3"]')).toHaveText("3");
+  await view.selectOption("photo");
+  await expect(current.locator('[data-score-view="photo"] [data-finger="3"]').first()).toBeVisible();
+  await fingers.uncheck();
+  await expect(current.locator("[data-finger]")).toHaveCount(0);
   const context = await browser.newContext({ baseURL, storageState: await page.context().storageState() });
   try {
     const other = await context.newPage();
@@ -215,7 +230,9 @@ test("keeps tracks, lines, and appended photos in order", async ({ page }) => {
   await page.getByLabel("Score title").fill(title);
   await page.getByRole("button", { name: "Save and practice" }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
-  await expect(page.getByRole("region", { name: /track 1$/ })).toHaveCount(4);
+  await expect(page.getByRole("region", { name: /track 1$/ })).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Page 1, line 1, track 1" })).toHaveAttribute("data-practice-line", "current");
+  await expect(page.getByRole("region", { name: "Page 1, line 2, track 1" })).toHaveAttribute("data-practice-line", "next");
   await page.getByLabel("Practice track").selectOption("2");
   await expect(page.getByRole("region", { name: /track 2$/ })).toHaveCount(2);
   await expect(page.getByRole("region", { name: /track 1$/ })).toHaveCount(0);
@@ -248,19 +265,39 @@ test("shows solfège prompts and turns notes green when microphone audio matches
   });
   await page.goto("/sightstring");
   await page.getByRole("button", { name: "Practice Open String Study", exact: true }).click();
+  const current = page.locator('[data-practice-line="current"]');
+  const preview = page.locator('[data-practice-line="next"]');
+  const timer = page.getByRole("timer", { name: "Elapsed time" });
+  await expect(current).toHaveAttribute("aria-label", "Staff 1");
+  await expect(preview).toHaveAttribute("aria-label", "Staff 2");
+  const fingers = page.getByRole("checkbox", { name: "Show fingering" });
+  await expect(current.locator("[data-finger]")).toHaveCount(0);
+  await fingers.check();
+  await expect(current.locator('[data-note="demo-0-0"] [data-finger="0"]')).toHaveText("0");
+  await fingers.uncheck();
   await page.getByRole("button", { name: "Start listening" }).click();
   await expect(page.getByText("Play · Mi (E3)", { exact: true })).toBeVisible();
+  await expect(timer).toHaveCount(0);
   const play = (frequency: number) => page.evaluate((value) => {
     window.dispatchEvent(new CustomEvent("sightstring-test-tone", { detail: value }));
   }, frequency);
   await play(82.4069);
   await expect(page.getByText("1 of 16 notes played")).toBeVisible();
+  await expect(timer).toHaveText(/^\d+\.\d s$/);
+  const initialTime = await timer.innerText();
+  await expect(timer).not.toHaveText(initialTime);
   await expect(page.locator('[data-note="demo-0-0"]')).toHaveAttribute("data-status", "correct");
   await expect(page.getByText("Play · La (A3)", { exact: true })).toBeVisible();
   await play(110);
   await expect(page.getByText("Play · Ré (D4)", { exact: true })).toBeVisible();
   await play(146.8324);
   await expect(page.getByText("Play · Sol (G4)", { exact: true })).toBeVisible();
+  for (const [index, frequency] of [195.9977, 246.9417, 329.6276, 246.9417, 195.9977].entries()) {
+    await play(frequency);
+    await expect(page.getByText(`${index + 4} of 16 notes played`)).toBeVisible();
+  }
+  await expect(current).toHaveAttribute("aria-label", "Staff 2");
+  await expect(preview).toHaveCount(0);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.getByText("Play at your own pace")).toBeVisible();
 });
@@ -452,6 +489,7 @@ test("saves a generated exercise with its best times across visits", async ({ pa
       && response.url().includes("/attempts/") && response.status() === 204);
     await play(110);
     await expect(page.getByText("Score complete", { exact: true })).toBeVisible();
+    await expect(page.getByRole("timer")).toHaveCount(0);
     await saved;
   };
   await expect(leaderboard.getByText("No completed attempts yet.")).toBeVisible();

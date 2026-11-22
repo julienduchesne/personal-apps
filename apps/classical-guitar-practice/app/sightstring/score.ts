@@ -1,4 +1,5 @@
 export type Accidental = -1 | 0 | 1 | null;
+export type Finger = 0 | 1 | 2 | 3 | 4;
 
 export interface Note {
   id: string;
@@ -7,6 +8,7 @@ export interface Note {
   step: number;
   accidental: Accidental;
   hollow: boolean;
+  finger?: Finger;
   voice?: "bass" | "melody";
 }
 
@@ -69,6 +71,11 @@ export function soundingMidi(note: Note, key: number) {
   const { letter, octave, alteration } = pitch(note.step, key, note.accidental);
   // Written classical guitar notation sounds an octave lower.
   return 12 * octave + [0, 2, 4, 5, 7, 9, 11][letter] + alteration;
+}
+
+export function displayAccidental(note: Note, key: number): Accidental {
+  const alteration = pitch(note.step, key, null).alteration;
+  return note.accidental ?? (alteration === 1 || alteration === -1 ? alteration : null);
 }
 
 export function scoreEvents(score: Score, track = 1) {

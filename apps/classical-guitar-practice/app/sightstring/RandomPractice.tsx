@@ -1,4 +1,5 @@
-import { availablePitches, bassNotesByMelody, frets, guitarStrings, isValidNoteCount, maximumExerciseNotes, type RandomSettings } from "./randomExercise";
+import { frets, guitarStrings } from "./fingering";
+import { availablePitches, bassNotesByMelody, isValidNoteCount, maximumExerciseNotes, type RandomSettings } from "./randomExercise";
 import styles from "./Sightstring.module.css";
 
 function fretLabel(fret: number) {

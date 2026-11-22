@@ -2,45 +2,52 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { downloadUrl, listBestAttempts, listScores, loadScanPhoto, recoverLocalScores, saveAttempt, saveScore } from "./library";
+import { guitarStrings, suggestFingerings } from "./fingering";
 import { listen } from "./microphone";
 import { scanPage } from "./recognition";
 import { RandomPractice } from "./RandomPractice";
-import { generateRandomExercise, guitarStrings, type RandomSettings } from "./randomExercise";
-import { exercise, keys, leaderboardSize, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Note, type PracticeAttempt, type Score, type Staff } from "./score";
+import { generateRandomExercise, type RandomSettings } from "./randomExercise";
+import { displayAccidental, exercise, keys, leaderboardSize, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Finger, type Note, type PracticeAttempt, type Score, type Staff } from "./score";
 import styles from "./Sightstring.module.css";
 
-function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
+function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showPhoto = true, keySignature = 0, fingers }: {
   staff: Staff;
   active?: Set<string>;
   correct?: Set<string>;
   reviewing?: boolean;
   selected?: string;
   onPick?: (x: number, y: number) => void;
+  showPhoto?: boolean;
+  keySignature?: number;
+  fingers?: ReadonlyMap<string, Finger>;
 }) {
   const x = (position: number) => `${100 * position / staff.width}%`;
   const y = (position: number) => `${100 * position / staff.height}%`;
   const { spacing, imageCrop } = staff;
-  const imageStyle = imageCrop ? {
+  const photo = showPhoto ? staff.image : undefined;
+  const imageStyle = photo && imageCrop ? {
     backgroundSize: `${x(imageCrop.width)} ${y(imageCrop.height)}`,
     backgroundPosition: `${100 * imageCrop.x / (imageCrop.width - staff.width || 1)}% ${100 * imageCrop.y / (imageCrop.height - staff.height || 1)}%`,
   } : {};
+  const alterations = new Map<number, number>();
   function pick(event: MouseEvent<HTMLDivElement>) {
     const region = event.currentTarget.getBoundingClientRect();
     onPick?.((event.clientX - region.left) * staff.width / region.width,
       (event.clientY - region.top) * staff.height / region.height);
   }
   return (
-    <div className={styles.paper} style={{
+    <div className={styles.paper} data-score-view={photo ? "photo" : "notation"} style={{
       aspectRatio: `${staff.width} / ${staff.height}`,
       ...imageStyle,
-      backgroundImage: staff.image ? `url("${staff.image}")` : undefined,
+      backgroundImage: photo ? `url("${photo}")` : undefined,
     }} onClick={onPick ? pick : undefined} aria-hidden="true">
-      {!staff.image && <>
+      {!photo && <>
         {[0, 1, 2, 3, 4].map((line) => (
           <i key={line} data-staff-line={line} className={styles.line}
             style={{ left: x(staff.left), width: x(staff.right - staff.left), top: y(staff.top + line * spacing) }} />
         ))}
-        {[staff.left, ...(staff.notes.some((note) => note.x > 330) ? [330] : []), staff.right - 5, staff.right].map((bar) => (
+        {[staff.left, ...(!staff.image && staff.notes.some((note) => note.x > 330) ? [330] : []),
+          ...(!staff.image ? [staff.right - 5] : []), staff.right].map((bar) => (
           <i key={bar} className={styles.bar} style={{ left: x(bar), top: y(staff.top), height: y(spacing * 4) }} />
         ))}
         {/* Bravura’s G-clef baseline sits 4.5 staff spaces down in this image. */}
@@ -58,6 +65,11 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
         const overlaps = note.voice && staff.notes.some((other) =>
           other.x === note.x && other.voice !== note.voice && Math.abs(other.step - note.step) < 2);
         const noteX = overlaps ? note.x + (up ? 0.5 : -0.5) * spacing : note.x;
+        const noteY = !photo && staff.image ? staff.top + (10 - note.step) * spacing / 2 : note.y;
+        const sign = displayAccidental(note, keySignature);
+        const accidental = !photo && staff.image && sign === null && alterations.get(note.step) ? 0 : sign;
+        alterations.set(note.step, sign ?? 0);
+        const finger = fingers?.get(id);
         const ledgers: number[] = [];
         for (let step = 0; step >= note.step; step -= 2) ledgers.push(step);
         for (let step = 12; step <= note.step; step += 2) ledgers.push(step);
@@ -66,26 +78,33 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
             data-selected={chosen || undefined} data-review={reviewing || undefined} className={styles.mark}>
             {(current || chosen) && (
               <i className={styles.cursor} style={{
-                left: x(noteX - spacing * 0.95), width: x(spacing * 1.9), top: y(note.y - spacing), height: y(spacing * 2),
+                left: x(noteX - spacing * 0.95), width: x(spacing * 1.9), top: y(noteY - spacing), height: y(spacing * 2),
               }} />
             )}
-            {!staff.image && <>
-              {note.accidental !== null && <i className={styles.accidental} style={{ left: x(noteX - spacing * 0.8), top: y(note.y) }}>
-                {["♭", "♮", "♯"][note.accidental + 1]}
+            {!photo && <>
+              {accidental !== null && <i className={styles.accidental} style={{
+                left: x(noteX - spacing * 0.8), top: y(noteY), fontSize: `${160 * spacing / staff.width}cqw`,
+              }}>
+                {["♭", "♮", "♯"][accidental + 1]}
               </i>}
               {ledgers.map((step) => <i key={step} className={styles.line} style={{
                 left: x(noteX - spacing * 0.95), width: x(spacing * 1.9), top: y(staff.top + (10 - step) * spacing / 2),
               }} />)}
               <i className={styles.stem} style={{
-                left: x(noteX + (up ? 0.58 : -0.65) * spacing), top: y(note.y + (up ? -3 : 0) * spacing), height: y(spacing * 3),
+                left: x(noteX + (up ? 0.58 : -0.65) * spacing), top: y(noteY + (up ? -3 : 0) * spacing), height: y(spacing * 3),
               }} />
             </>}
-            {(!staff.image || hit || current || reviewing) && (
+            {(!photo || hit || current || reviewing) && (
               <i className={`${styles.head} ${note.hollow ? styles.hollow : ""}`} style={{
                 left: x(noteX - spacing * 0.68), width: x(spacing * 1.36),
-                top: y(note.y - spacing * 0.46), height: y(spacing * 0.92),
+                top: y(noteY - spacing * 0.46), height: y(spacing * 0.92),
               }} />
             )}
+            {finger !== undefined && <i className={styles.finger} data-finger={finger} style={{
+              left: x(noteX + spacing * 0.85),
+              top: y(noteY + spacing * (note.voice === "bass" ? 0.9 : -0.85)),
+              fontSize: `max(0.625rem, ${85 * spacing / staff.width}cqw)`,
+            }}>{finger}</i>}
           </span>
         );
       })}
@@ -100,12 +119,15 @@ function Practice({ score, onBack, onGenerate, onSave }: {
   onSave?: (title: string) => Promise<void>;
 }) {
   const [track, setTrack] = useState(1);
+  const [showFingering, setShowFingering] = useState(false);
+  const [scoreView, setScoreView] = useState<"photo" | "notation">("photo");
   const [title, setTitle] = useState(score.title);
   const [naming, setNaming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const tracks = [...new Set(score.staves.filter((staff) => staff.notes.length > 0).map((staff) => staff.track ?? 1))].sort((a, b) => a - b);
   const selected = tracks.includes(track) ? track : tracks[0] ?? 1;
+  const hasPhoto = score.staves.some((staff) => (staff.track ?? 1) === selected && staff.image);
 
   async function save() {
     if (!onSave || !title.trim() || saving) return;
@@ -140,20 +162,45 @@ function Practice({ score, onBack, onGenerate, onSave }: {
       </div>
     </form>}
     {saveMessage && <p role={onSave ? "alert" : "status"}>{saveMessage}</p>}
-    {tracks.length > 1 && <label className={styles.trackPicker}>Practice track
-      <select value={selected} onChange={(event) => setTrack(Number(event.target.value))}>
-        {tracks.map((number) => <option key={number} value={number}>Track {number}</option>)}
-      </select>
-    </label>}
-    <PracticeTrack key={selected} score={score} track={selected} />
+    <div className={styles.practiceOptions}>
+      {tracks.length > 1 && <label className={styles.trackPicker}>Practice track
+        <select value={selected} onChange={(event) => setTrack(Number(event.target.value))}>
+          {tracks.map((number) => <option key={number} value={number}>Track {number}</option>)}
+        </select>
+      </label>}
+      {hasPhoto && <label className={styles.trackPicker}>Score view
+        <select value={scoreView} onChange={(event) => setScoreView(event.target.value === "photo" ? "photo" : "notation")}>
+          <option value="photo">Photo</option>
+          <option value="notation">Sheet music</option>
+        </select>
+      </label>}
+      <label className={styles.checkbox}>
+        <input type="checkbox" checked={showFingering} onChange={(event) => setShowFingering(event.target.checked)} />
+        Show fingering
+      </label>
+    </div>
+    {hasPhoto && scoreView === "notation" && <p className={styles.location}>Shows detected pitches. Use the photo for rhythm and markings.</p>}
+    {showFingering && <p className={styles.location}>Fretting fingers are suggested where none were set. 0 means open string.</p>}
+    <PracticeTrack key={selected} score={score} track={selected} showPhoto={scoreView === "photo"} showFingering={showFingering} />
   </>;
 }
 
-function formatDuration(durationMs: number) {
-  if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(3)} s`;
+function formatDuration(durationMs: number, precision = 3) {
+  if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(precision)} s`;
   const minutes = Math.floor(durationMs / 60_000);
-  const seconds = ((durationMs % 60_000) / 1000).toFixed(3).padStart(6, "0");
+  const seconds = ((durationMs % 60_000) / 1000).toFixed(precision).padStart(precision + 3, "0");
   return `${minutes}:${seconds}`;
+}
+
+function RunningTimer({ startedAt }: { startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const tick = () => setElapsed(Math.max(0, Math.floor((performance.now() - startedAt) / 100) * 100));
+    tick();
+    const timer = window.setInterval(tick, 100);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  return <span role="timer" aria-label="Elapsed time" className={styles.timer}>{formatDuration(elapsed, 1)}</span>;
 }
 
 function bestTimes(attempts: PracticeAttempt[]) {
@@ -162,8 +209,11 @@ function bestTimes(attempts: PracticeAttempt[]) {
     .slice(0, leaderboardSize);
 }
 
-function PracticeTrack({ score, track }: { score: Score; track: number }) {
+function PracticeTrack({ score, track, showPhoto, showFingering }: {
+  score: Score; track: number; showPhoto: boolean; showFingering: boolean;
+}) {
   const events = useMemo(() => scoreEvents(score, track), [score, track]);
+  const fingers = useMemo(() => showFingering ? suggestFingerings(score, track) : undefined, [score, showFingering, track]);
   const [progress, setProgress] = useState({ index: 0, correct: new Set<string>() });
   const latest = useRef(progress);
   const [state, setState] = useState<"idle" | "starting" | "listening">("idle");
@@ -175,9 +225,13 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
   const [reload, setReload] = useState(0);
   const startedAt = useRef<number | null>(null);
   const microphone = useRef<AbortController | null>(null);
-  const systems = useRef<(HTMLElement | null)[]>([]);
+  const systems = useRef<HTMLDivElement>(null);
   const event = events[progress.index];
   const staffIndex = event?.staffIndex;
+  const visibleStaff = staffIndex ?? events.at(-1)?.staffIndex;
+  const previousStaff = useRef(visibleStaff);
+  const nextStaff = score.staves.findIndex((staff, index) => visibleStaff !== undefined && index > visibleStaff && (staff.track ?? 1) === track);
+  const visibleStaves = visibleStaff === undefined ? [] : nextStaff < 0 ? [visibleStaff] : [visibleStaff, nextStaff];
   const total = events.reduce((count, item) => count + item.notes.length, 0);
 
   function stop() {
@@ -196,10 +250,9 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
   }, []);
 
   useEffect(() => {
-    if (staffIndex !== undefined && staffIndex > 0) {
-      systems.current[staffIndex]?.scrollIntoView({ block: "nearest" });
-    }
-  }, [staffIndex]);
+    if (visibleStaff !== previousStaff.current) systems.current?.scrollIntoView({ block: "nearest" });
+    previousStaff.current = visibleStaff;
+  }, [visibleStaff]);
 
   useEffect(() => {
     if (!event) stop();
@@ -276,14 +329,19 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
       <progress aria-label="Practice progress" max={total} value={progress.correct.size} />
       <a className={styles.textButton} href="#sightstring-best-times">Best times</a>
     </header>
-    <div className={styles.systems}>
-      {score.staves.map((staff, index) => (staff.track ?? 1) === track && (
-        <section key={index} ref={(element) => { systems.current[index] = element; }}
+    <div className={styles.systems} ref={systems}>
+      {visibleStaves.map((index) => {
+        const staff = score.staves[index];
+        const next = index === nextStaff;
+        return <section key={index} data-practice-line={next ? "next" : "current"}
           aria-label={staff.page && staff.line ? `Page ${staff.page}, line ${staff.line}, track ${track}` : `Staff ${index + 1}`}>
-          {staff.page && staff.line && <p className={styles.location}>Page {staff.page} · Line {staff.line}</p>}
-          <StaffPaper staff={staff} active={staffIndex === index ? new Set(remaining.map((note) => note.id)) : undefined} correct={progress.correct} />
-        </section>
-      ))}
+          <p className={styles.location}>{next ? "Next line" : "Current line"}
+            {staff.page && staff.line ? ` · Page ${staff.page} · Line ${staff.line}` : ""}
+          </p>
+          <StaffPaper staff={staff} active={staffIndex === index ? new Set(remaining.map((note) => note.id)) : undefined}
+            correct={progress.correct} showPhoto={showPhoto} keySignature={score.key} fingers={fingers} />
+        </section>;
+      })}
     </div>
     <section className={styles.leaderboard} id="sightstring-best-times" aria-labelledby="sightstring-best-times-heading">
       <h2 id="sightstring-best-times-heading">Best times</h2>
@@ -315,13 +373,13 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
           : paired ? "Use standard tuning and pluck both notes together." : "Use standard tuning and pluck one note at a time."}</p>
         {error && <p role="alert">{error}</p>}
       </div>
+      {event && startedAt.current !== null && <RunningTimer startedAt={startedAt.current} />}
       {!event ? <button className={styles.transportButton} onClick={() => {
         const reset = { index: 0, correct: new Set<string>() };
         startedAt.current = null;
         setLatestAttempt(undefined);
         latest.current = reset;
         setProgress(reset);
-        systems.current[events[0]?.staffIndex]?.scrollIntoView({ block: "nearest" });
       }}>Play again</button>
         : state === "listening" ? <button className={styles.transportButton} onClick={stop}>Pause</button>
           : <button disabled={state === "starting"} className={styles.transportButton} onClick={start}>Start listening</button>}
@@ -485,6 +543,13 @@ function Review({ initial, editing, onBack, onSave }: { initial: Score; editing:
         }}>
           <option value="key">Use key signature</option><option value="-1">Flat ♭</option>
           <option value="0">Natural ♮</option><option value="1">Sharp ♯</option>
+        </select></label>
+        <label>Fingering<select value={selection.finger ?? ""} onChange={(event) => {
+          const value = event.target.value;
+          setSelection({ ...selection, finger: value === "" ? undefined : Number(value) as Finger });
+        }}>
+          <option value="">Automatic</option>
+          {[0, 1, 2, 3, 4].map((finger) => <option key={finger} value={finger}>{finger}</option>)}
         </select></label>
       </div>
       <label className={styles.checkbox}><input type="checkbox" checked={selection.hollow}

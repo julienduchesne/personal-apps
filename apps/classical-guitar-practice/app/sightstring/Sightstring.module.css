@@ -49,8 +49,7 @@
 .library h2 { font-size: 1.5rem; margin-bottom: 0.3rem; }
 .scoreRow { border-bottom: 1px solid var(--border); padding: 0.7rem 0; display: flex; gap: 0.7rem; justify-content: space-between; align-items: center; overflow-wrap: anywhere; }
 .local { margin-top: 0.8rem; font-size: 0.875rem; }
-.systems { display: grid; gap: 0.7rem; }
-.systems section { scroll-margin-block: 4rem 9rem; }
+.systems { display: grid; gap: 0.7rem; scroll-margin-block: 4rem 9rem; }
 .paper { width: 100%; position: relative; container-type: inline-size; background: var(--paper) center / 100% 100% no-repeat; border-radius: 0.45rem; box-shadow: 0 0 0 1px var(--border); overflow: hidden; }
 .paper i { position: absolute; display: block; }
 .line { height: max(1px, 0.12cqw); background: #514b48; }
@@ -63,6 +62,7 @@
 .head { background: currentColor; border-radius: 50%; transform: rotate(-17deg); }
 .head.hollow { background: none; border: max(1px, 0.25cqw) solid currentColor; }
 .stem { background: currentColor; width: max(1px, 0.22cqw); }
+.finger { color: var(--blue); background: var(--paper); border-radius: 0.18em; padding: 0 0.15em; font-weight: 700; font-style: normal; line-height: 1; transform: translateY(-50%); }
 .staffNavigation { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .fields { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0.7rem; }
 .fields label { font-weight: 600; min-width: 0; }
@@ -85,6 +85,7 @@
   z-index: 1;
 }
 .transport p { color: #dedbd8; }
+.timer { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
 .sightstring [role="alert"] { color: #8f3030; }
 .transport [role="alert"] { color: #ffbdab; }
 @media (max-width: 420px) {
@@ -105,6 +106,7 @@
 .systems .location { margin-bottom: 0.25rem; }
 .trackPicker { display: flex; align-items: center; gap: 0.75rem; font-weight: 600; }
 .trackPicker select { width: auto; }
+.practiceOptions { display: flex; flex-wrap: wrap; align-items: center; column-gap: 1.2rem; row-gap: 0.5rem; }
 
 .accidental { font: normal 4cqw/1 "Apple Symbols", "Segoe UI Symbol", serif; transform: translate(-100%, -50%); }
 .randomForm { display: grid; gap: 1rem; }

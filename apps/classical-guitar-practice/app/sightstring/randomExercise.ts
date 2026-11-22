@@ -1,15 +1,5 @@
 import { exerciseStaff, type Accidental, type Note, type Score } from "./score";
-
-export const guitarStrings = [
-  { number: 6, openMidi: 40, name: "Low E" },
-  { number: 5, openMidi: 45, name: "A" },
-  { number: 4, openMidi: 50, name: "D" },
-  { number: 3, openMidi: 55, name: "G" },
-  { number: 2, openMidi: 59, name: "B" },
-  { number: 1, openMidi: 64, name: "High E" },
-];
-
-export const frets = Array.from({ length: 19 }, (_, index) => index);
+import { frets, guitarStrings, suggestFingerings } from "./fingering";
 
 export interface RandomSettings {
   strings: number[];
@@ -164,10 +154,15 @@ export function generateRandomExercise(settings: RandomSettings): Score {
   const { firstFret, lastFret } = settings;
   const range = lastFret === 0 ? "open strings"
     : firstFret === lastFret ? `fret ${firstFret}` : `frets ${firstFret}–${lastFret}`;
-  return {
+  const score: Score = {
     id, title: `${date} — ${description}, ${range}`, key: 0, generated: true,
     staves: Array.from({ length: Math.ceil(noteCount / 8) }, (_, index) =>
       exerciseStaff(`${id}-${index}`, spellNotes(notes.slice(index * 8, (index + 1) * 8), settings.withBass),
         () => crypto.randomUUID())),
   };
+  const suggestions = suggestFingerings(score, 1, settings);
+  for (const staff of score.staves) {
+    for (const note of staff.notes) note.finger = suggestions.get(note.id);
+  }
+  return score;
 }
