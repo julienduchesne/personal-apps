@@ -42,6 +42,9 @@ test("searches and sorts saved scores separately from practice exercises", async
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/sightstring");
 
+  const importer = page.getByRole("region", { name: "Import a score" });
+  await expect(importer.getByRole("button", { name: "Choose photos" })).toBeVisible();
+  await expect(importer.locator("[data-score-view]")).toHaveCount(0);
   const library = page.getByRole("region", { name: "Your scores" });
   const exercises = page.getByRole("region", { name: "Practice exercises" });
   const titles = library.getByRole("listitem").locator("strong");
@@ -66,6 +69,40 @@ test("searches and sorts saved scores separately from practice exercises", async
   await page.getByRole("button", { name: "Back to scores" }).click();
   await expect(search).toHaveValue("missing");
   await expect(sort).toHaveValue("notes-asc");
+});
+
+test("shows spinners while saved scores and practice history load", async ({ page }) => {
+  async function pauseResponse(url: string) {
+    let finish!: () => void;
+    const ready = new Promise<void>((resolve) => { finish = resolve; });
+    await page.route(url, async (route) => {
+      await ready;
+      await route.fulfill({ json: [] });
+    });
+    return finish;
+  }
+  const showScores = await pauseResponse("**/api/sightstring");
+  const showAttempts = await pauseResponse("**/api/sightstring/open-strings/attempts/1");
+  try {
+    await page.goto("/sightstring");
+    const library = page.getByRole("region", { name: "Your scores" });
+    const scoreStatus = library.getByRole("status").filter({ hasText: "Loading scores" });
+    await expect(scoreStatus.locator('[aria-hidden="true"]')).toBeVisible();
+    showScores();
+    await expect(library.getByText("No saved scores yet.")).toBeVisible();
+    await expect(scoreStatus).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Practice Open String Study" }).click();
+    const history = page.getByRole("region", { name: "Best times" });
+    const historyStatus = history.getByRole("status").filter({ hasText: "Loading best times" });
+    await expect(historyStatus.locator('[aria-hidden="true"]')).toBeVisible();
+    showAttempts();
+    await expect(history.getByText("No completed attempts yet.")).toBeVisible();
+    await expect(historyStatus).toHaveCount(0);
+  } finally {
+    showScores();
+    showAttempts();
+  }
 });
 
 test("keeps a ledger-line note and skips the fingering 3 beside it", async ({ page }) => {

@@ -137,6 +137,13 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick, showP
   );
 }
 
+function LoadingStatus({ children }: { children: string }) {
+  return <p className={styles.loadingStatus} role="status">
+    <span className={styles.spinner} aria-hidden="true" />
+    {children}
+  </p>;
+}
+
 function Practice({ score, onBack, onGenerate, onSave }: {
   score: Score;
   onBack: () => void;
@@ -407,7 +414,7 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
           <time dateTime={completedAt}>{new Date(completedAt).toLocaleDateString()}</time>
         </li>)}
       </ol>}
-      {leaderboardState === "loading" && <p>Loading best times…</p>}
+      {leaderboardState === "loading" && <LoadingStatus>Loading best times…</LoadingStatus>}
       {leaderboardState === "ready" && !attempts.length && <p>No completed attempts yet.</p>}
       {leaderboardState === "failed" && <div className={styles.actions}>
         <p role="alert">Couldn’t load best times.</p>
@@ -812,8 +819,6 @@ export function Sightstring() {
             <p>Photograph a guitar score and see the notes turn green as you play.</p>
           </header>
           <section className={styles.intro} aria-label="Import a score">
-            <StaffPaper staff={exercise.staves[0]} correct={new Set(["demo-0-0", "demo-0-1", "demo-0-2"])}
-              active={new Set(["demo-0-3"])} />
             <div className={styles.importActions}>
               <button className={styles.primary} disabled={importing} onClick={() => camera.current?.click()}>Take a photo</button>
               <button className={styles.secondary} disabled={importing} onClick={() => photos.current?.click()}>Choose photos</button>
@@ -845,7 +850,7 @@ export function Sightstring() {
                 {scoreSortOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select></label>
             </div>
-            {loadingScores && <p className={styles.local} role="status">Loading scores…</p>}
+            {loadingScores && <LoadingStatus>Loading scores…</LoadingStatus>}
             {!loadingScores && visibleScores.length === 0 && (scores.length > 0 || !error) && <p className={styles.local} role="status">
               {scores.length ? "No scores match your search." : "No saved scores yet."}
             </p>}
