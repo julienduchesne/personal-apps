@@ -159,9 +159,15 @@ export function generateRandomExercise(settings: RandomSettings): Score {
     previousBass = bass;
   }
   const id = crypto.randomUUID();
+  const date = new Intl.DateTimeFormat("en-CA", { dateStyle: "medium" }).format();
+  const description = settings.withBass ? "Bass and melody" : "Sightreading";
+  const { firstFret, lastFret } = settings;
+  const range = lastFret === 0 ? "open strings"
+    : firstFret === lastFret ? `fret ${firstFret}` : `frets ${firstFret}–${lastFret}`;
   return {
-    id, title: "Random sightreading", key: 0,
+    id, title: `${date} — ${description}, ${range}`, key: 0, generated: true,
     staves: Array.from({ length: Math.ceil(noteCount / 8) }, (_, index) =>
-      exerciseStaff(`${id}-${index}`, spellNotes(notes.slice(index * 8, (index + 1) * 8), settings.withBass))),
+      exerciseStaff(`${id}-${index}`, spellNotes(notes.slice(index * 8, (index + 1) * 8), settings.withBass),
+        () => crypto.randomUUID())),
   };
 }

@@ -395,9 +395,85 @@ test("generates a playable random exercise for open strings and fret 18", async 
   await expect(page.getByText("1 of 40 notes played")).toBeVisible();
   await page.getByRole("button", { name: "New exercise" }).click();
   await expect(page.getByText("0 of 40 notes played")).toBeVisible();
+  await page.getByRole("button", { name: "Save exercise" }).click();
+  await expect(page.getByLabel("Score title")).toHaveValue(/ — Sightreading, fret 18$/);
+  await page.getByRole("button", { name: "Save to library" }).click();
+  await expect(page.getByText("Exercise saved to your scores.")).toBeVisible();
+  await page.getByRole("button", { name: "New exercise" }).click();
   await page.getByRole("button", { name: "Practice settings" }).click();
   await expect(page.getByLabel("First fret")).toHaveValue("18");
   await expect(page.getByLabel("Last fret")).toHaveValue("18");
+});
+
+test("saves a generated exercise with its best times across visits", async ({ page }) => {
+  await page.addInitScript(() => {
+    let pluck: (frequency: number) => void;
+    window.addEventListener("sightstring-test-timed-note", (event) => pluck?.((event as CustomEvent<number>).detail));
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      value: async () => {
+        const audio = new AudioContext();
+        await audio.resume();
+        const destination = audio.createMediaStreamDestination();
+        pluck = (frequency) => {
+          const oscillator = audio.createOscillator();
+          const gain = audio.createGain();
+          oscillator.frequency.value = frequency;
+          gain.gain.value = 0.12;
+          oscillator.connect(gain).connect(destination);
+          oscillator.start();
+          oscillator.stop(audio.currentTime + 0.24);
+        };
+        return destination.stream;
+      },
+    });
+  });
+
+  const title = `Two-note practice ${crypto.randomUUID()}`;
+  await page.goto("/sightstring");
+  await page.getByRole("button", { name: "Set up random sightreading" }).click();
+  const strings = page.getByRole("group", { name: "Strings" }).getByRole("checkbox");
+  for (const string of (await strings.all()).slice(2)) await string.uncheck();
+  await page.getByLabel("Last fret").selectOption("0");
+  await page.getByLabel("Number of notes").fill("2");
+  await page.getByRole("button", { name: "Generate exercise" }).click();
+
+  const leaderboard = page.getByRole("region", { name: "Best times" });
+  const times = leaderboard.getByRole("listitem").locator("strong");
+  const play = (frequency: number) => page.evaluate((value) => {
+    window.dispatchEvent(new CustomEvent("sightstring-test-timed-note", { detail: value }));
+  }, frequency);
+  const playExercise = async (gap: number) => {
+    await page.getByRole("button", { name: "Start listening" }).click();
+    await expect(page.getByText("Play · Mi (E3)", { exact: true })).toBeVisible();
+    await play(82.4069);
+    await expect(page.getByText("Play · La (A3)", { exact: true })).toBeVisible();
+    await page.waitForTimeout(gap);
+    const saved = page.waitForResponse((response) => response.request().method() === "PUT"
+      && response.url().includes("/attempts/") && response.status() === 204);
+    await play(110);
+    await expect(page.getByText("Score complete", { exact: true })).toBeVisible();
+    await saved;
+  };
+  await expect(leaderboard.getByText("No completed attempts yet.")).toBeVisible();
+  await playExercise(600);
+  await expect(times).toHaveCount(1);
+  const first = await times.first().innerText();
+  expect(parseFloat(first)).toBeGreaterThan(0.5);
+  await page.getByRole("button", { name: "Play again" }).click();
+  await playExercise(30);
+  await expect(times).toHaveCount(2);
+  const best = await times.first().innerText();
+  expect(parseFloat(best)).toBeLessThan(parseFloat(first));
+
+  await page.getByRole("button", { name: "Save exercise" }).click();
+  await expect(page.getByLabel("Score title")).toHaveValue(/ — Sightreading, open strings$/);
+  await page.getByLabel("Score title").fill(title);
+  await page.getByRole("button", { name: "Save to library" }).click();
+  await expect(page.getByText("Exercise saved to your scores.")).toBeVisible();
+  await page.reload();
+  await page.getByRole("region", { name: title }).getByRole("button", { name: "Practice", exact: true }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(times).toHaveText([best, first]);
 });
 
 test("can exclude sharps and flats from random sightreading", async ({ page }) => {

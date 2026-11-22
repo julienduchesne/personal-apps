@@ -1,5 +1,5 @@
 import { listBlobs, readFileStream, readJson, uploadFile, writeJson } from "@repo/storage";
-import type { Note, Score, Staff } from "@/app/sightstring/score";
+import { exercise, leaderboardSize, type Note, type PracticeAttempt, type Score, type Staff } from "@/app/sightstring/score";
 
 const prefix = "sightstring/scores/";
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
@@ -22,11 +22,12 @@ function range(value: unknown, min: number, max: number): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
 }
 
-function isNote(value: unknown): value is Note {
+function isNote(value: unknown, generated: boolean): value is Note {
   return object(value) && typeof value.id === "string" && uuid.test(value.id)
     && range(value.x, 0, 2200) && range(value.y, 0, 2200)
-    && range(value.step, -5, 16) && Number.isInteger(value.step)
+    && range(value.step, -5, generated ? 20 : 16) && Number.isInteger(value.step)
     && (value.accidental === null || value.accidental === -1 || value.accidental === 0 || value.accidental === 1)
+    && (value.voice === undefined || (generated && (value.voice === "bass" || value.voice === "melody")))
     && typeof value.hollow === "boolean";
 }
 
@@ -35,12 +36,13 @@ function isScore(value: unknown, id: string): value is Score {
     const base = `/api/sightstring/${id}/`;
     return typeof entry === "string" && entry.startsWith(base) && uuid.test(entry.slice(base.length));
   };
+  const generated = object(value) && value.generated === true;
   const staff = (entry: unknown): entry is Staff => {
-    if (!object(entry) || !image(entry.image)
+    if (!object(entry) || (generated ? entry.image !== undefined || entry.imageCrop !== undefined : !image(entry.image))
       || !range(entry.width, 1, 2200) || !range(entry.height, 1, 2200)
       || !range(entry.left, 0, entry.width) || !range(entry.right, entry.left, entry.width)
       || !range(entry.top, 0, entry.height) || !range(entry.spacing, 1, entry.height)
-      || !Array.isArray(entry.notes) || entry.notes.length > 500 || !entry.notes.every(isNote)) return false;
+      || !Array.isArray(entry.notes) || entry.notes.length > 500 || !entry.notes.every((note) => isNote(note, generated))) return false;
     for (const [field, max] of [["page", 24], ["line", 250], ["track", 32]] as const) {
       if (entry[field] !== undefined && (!range(entry[field], 1, max) || !Number.isInteger(entry[field]))) return false;
     }
@@ -50,9 +52,22 @@ function isScore(value: unknown, id: string): value is Score {
   };
   return object(value) && value.id === id && typeof value.title === "string" && !!value.title.trim() && value.title.length <= 200
     && range(value.key, -7, 7) && Number.isInteger(value.key)
-    && (value.pages === undefined || (Array.isArray(value.pages) && value.pages.length <= 24 && value.pages.every(image)))
+    && (value.generated === undefined || generated)
+    && (value.pages === undefined || (!generated && Array.isArray(value.pages) && value.pages.length <= 24 && value.pages.every(image)))
     && Array.isArray(value.staves) && value.staves.length <= 250
     && value.staves.every(staff) && value.staves.some((entry) => entry.notes.length > 0);
+}
+
+function attemptPrefix(id: string, track: string) {
+  if (!(uuid.test(id) || id === exercise.id) || !/^[1-9]\d?$/.test(track) || Number(track) > 32) return;
+  return `sightstring/attempts/${id}/${track}/`;
+}
+
+function isAttempt(value: unknown, id: string): value is PracticeAttempt {
+  return object(value) && value.id === id && typeof value.durationMs === "number"
+    && Number.isSafeInteger(value.durationMs) && value.durationMs >= 0
+    && typeof value.completedAt === "string" && value.completedAt.length === 24
+    && Number.isFinite(Date.parse(value.completedAt));
 }
 
 export const dynamic = "force-dynamic";
@@ -71,7 +86,19 @@ export async function GET(request: Request, { params }: Context) {
     }
   }
 
-  const [id, image] = segments;
+  const [id, image, track] = segments;
+  if (segments.length === 3 && image === "attempts") {
+    const path = attemptPrefix(id, track);
+    if (!path) return fail(404, "Leaderboard not found.");
+    try {
+      // Sorting the duration in the object key lets us fetch only the fastest attempts.
+      const keys = (await listBlobs(path, { strict: true })).sort().slice(0, leaderboardSize);
+      const attempts = await Promise.all(keys.map((key) => readJson<PracticeAttempt>(key, { strict: true })));
+      return Response.json(attempts.filter(Boolean), { headers: { "Cache-Control": "private, no-store" } });
+    } catch {
+      return fail(502, "Couldn’t load the leaderboard.");
+    }
+  }
   if (segments.length !== 2 || !uuid.test(id) || !uuid.test(image)) return fail(404, "Image not found.");
   const stream = await readFileStream(imageKey(id, image));
   if (!stream) return fail(404, "Image not found.");
@@ -91,7 +118,21 @@ export async function GET(request: Request, { params }: Context) {
 export async function PUT(request: Request, { params }: Context) {
   if (!process.env.SITE_PASSWORD) return fail(503, "Score storage requires site authentication.");
   const segments = (await params).segments ?? [];
-  const [id, image] = segments;
+  const [id, image, track, attemptId] = segments;
+  if (segments.length === 4 && image === "attempts") {
+    const path = attemptPrefix(id, track);
+    if (!path || !uuid.test(attemptId)) return fail(404, "Attempt not found.");
+    const attempt: unknown = await request.json().catch(() => null);
+    if (!isAttempt(attempt, attemptId)) return fail(400, "Invalid practice attempt.");
+    const { durationMs, completedAt } = attempt;
+    try {
+      const duration = String(durationMs).padStart(16, "0");
+      await writeJson(`${path}${duration}-${attemptId}.json`, { id: attemptId, durationMs, completedAt });
+      return new Response(null, { status: 204 });
+    } catch {
+      return fail(502, "Couldn’t save the attempt.");
+    }
+  }
   if (!id || !uuid.test(id) || segments.length > 2 || (image && !uuid.test(image))) {
     return fail(404, "Score not found.");
   }
@@ -111,10 +152,12 @@ export async function PUT(request: Request, { params }: Context) {
   const score: unknown = await request.json().catch(() => null);
   if (!isScore(score, id)) return fail(400, "Invalid score.");
   try {
-    const images = new Set(await listBlobs(`sightstring/images/${id}/`, { strict: true }));
-    const sources = [...(score.pages ?? []), ...score.staves.map((staff) => staff.image!)];
-    if (sources.some((source) => !images.has(imageKey(id, source.split("/").at(-1)!)))) {
-      return fail(409, "Some scan images haven’t been uploaded yet.");
+    if (!score.generated) {
+      const images = new Set(await listBlobs(`sightstring/images/${id}/`, { strict: true }));
+      const sources = [...(score.pages ?? []), ...score.staves.map((staff) => staff.image!)];
+      if (sources.some((source) => !images.has(imageKey(id, source.split("/").at(-1)!)))) {
+        return fail(409, "Some scan images haven’t been uploaded yet.");
+      }
     }
     // Publish the score after its images so a failed rescan leaves the saved version readable.
     await writeJson(scoreKey(id), score);

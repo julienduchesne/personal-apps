@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { downloadUrl, listScores, loadScanPhoto, recoverLocalScores, saveScore } from "./library";
+import { downloadUrl, listBestAttempts, listScores, loadScanPhoto, recoverLocalScores, saveAttempt, saveScore } from "./library";
 import { listen } from "./microphone";
 import { scanPage } from "./recognition";
 import { RandomPractice } from "./RandomPractice";
 import { generateRandomExercise, guitarStrings, type RandomSettings } from "./randomExercise";
-import { exercise, keys, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Note, type Score, type Staff } from "./score";
+import { exercise, keys, leaderboardSize, noteName, practiceNoteName, scoreEvents, soundingMidi, steps, type Note, type PracticeAttempt, type Score, type Staff } from "./score";
 import styles from "./Sightstring.module.css";
 
 function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
@@ -93,15 +93,53 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
   );
 }
 
-function Practice({ score, onBack, onGenerate }: { score: Score; onBack: () => void; onGenerate?: () => void }) {
+function Practice({ score, onBack, onGenerate, onSave }: {
+  score: Score;
+  onBack: () => void;
+  onGenerate?: () => void;
+  onSave?: (title: string) => Promise<void>;
+}) {
   const [track, setTrack] = useState(1);
+  const [title, setTitle] = useState(score.title);
+  const [naming, setNaming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
   const tracks = [...new Set(score.staves.filter((staff) => staff.notes.length > 0).map((staff) => staff.track ?? 1))].sort((a, b) => a - b);
   const selected = tracks.includes(track) ? track : tracks[0] ?? 1;
+
+  async function save() {
+    if (!onSave || !title.trim() || saving) return;
+    setSaving(true);
+    setSaveMessage("");
+    try {
+      await onSave(title.trim());
+      setNaming(false);
+      setSaveMessage("Exercise saved to your scores.");
+    } catch {
+      setSaveMessage("Couldn’t save the exercise. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return <>
     <div className={styles.actions}>
-      <button className={styles.textButton} onClick={onBack}>{onGenerate ? "Practice settings" : "Back to scores"}</button>
+      <button className={styles.textButton} onClick={onBack}>{onSave ? "Practice settings" : "Back to scores"}</button>
       {onGenerate && <button className={styles.secondary} onClick={onGenerate}>New exercise</button>}
+      {onSave && !naming && <button className={styles.secondary} onClick={() => setNaming(true)}>Save exercise</button>}
     </div>
+    {onSave && naming && <form className={styles.saveExercise} onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      <label>Score title<input autoFocus required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+      <div className={styles.actions}>
+        <button className={styles.primary} disabled={saving || !title.trim()}>{saving ? "Saving…" : "Save to library"}</button>
+        <button className={styles.secondary} type="button" disabled={saving} onClick={() => {
+          setNaming(false);
+          setTitle(score.title);
+          setSaveMessage("");
+        }}>Cancel</button>
+      </div>
+    </form>}
+    {saveMessage && <p role={onSave ? "alert" : "status"}>{saveMessage}</p>}
     {tracks.length > 1 && <label className={styles.trackPicker}>Practice track
       <select value={selected} onChange={(event) => setTrack(Number(event.target.value))}>
         {tracks.map((number) => <option key={number} value={number}>Track {number}</option>)}
@@ -111,12 +149,31 @@ function Practice({ score, onBack, onGenerate }: { score: Score; onBack: () => v
   </>;
 }
 
+function formatDuration(durationMs: number) {
+  if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(3)} s`;
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = ((durationMs % 60_000) / 1000).toFixed(3).padStart(6, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function bestTimes(attempts: PracticeAttempt[]) {
+  return [...new Map(attempts.map((attempt) => [attempt.id, attempt])).values()]
+    .sort((a, b) => a.durationMs - b.durationMs || a.id.localeCompare(b.id))
+    .slice(0, leaderboardSize);
+}
+
 function PracticeTrack({ score, track }: { score: Score; track: number }) {
   const events = useMemo(() => scoreEvents(score, track), [score, track]);
   const [progress, setProgress] = useState({ index: 0, correct: new Set<string>() });
   const latest = useRef(progress);
   const [state, setState] = useState<"idle" | "starting" | "listening">("idle");
   const [error, setError] = useState("");
+  const [attempts, setAttempts] = useState<PracticeAttempt[]>([]);
+  const [latestAttempt, setLatestAttempt] = useState<PracticeAttempt>();
+  const [failedAttempts, setFailedAttempts] = useState<PracticeAttempt[]>([]);
+  const [leaderboardState, setLeaderboardState] = useState<"loading" | "ready" | "failed">("loading");
+  const [reload, setReload] = useState(0);
+  const startedAt = useRef<number | null>(null);
   const microphone = useRef<AbortController | null>(null);
   const systems = useRef<(HTMLElement | null)[]>([]);
   const event = events[progress.index];
@@ -148,6 +205,28 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
     if (!event) stop();
   }, [event]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    listBestAttempts(score.id, track, controller.signal).then((stored) => {
+      if (controller.signal.aborted) return;
+      setAttempts((current) => bestTimes([...stored, ...current]));
+      setLeaderboardState("ready");
+    }).catch(() => {
+      if (!controller.signal.aborted) setLeaderboardState("failed");
+    });
+    return () => controller.abort();
+  }, [score.id, track, reload]);
+
+  async function record(attempt: PracticeAttempt) {
+    setFailedAttempts((current) => current.filter(({ id }) => id !== attempt.id));
+    try {
+      await saveAttempt(score.id, track, attempt);
+      setAttempts((current) => bestTimes([...current, attempt]));
+    } catch {
+      setFailedAttempts((current) => [...current, attempt]);
+    }
+  }
+
   async function start() {
     const controller = new AbortController();
     microphone.current = controller;
@@ -163,6 +242,13 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
         const next = { index: previous.index + Number(current.notes.every((note) => correct.has(note.id))), correct };
         latest.current = next;
         setProgress(next);
+        const now = performance.now();
+        startedAt.current ??= now;
+        if (next.index === events.length) {
+          const attempt = { id: crypto.randomUUID(), durationMs: Math.round(now - startedAt.current), completedAt: new Date().toISOString() };
+          setLatestAttempt(attempt);
+          void record(attempt);
+        }
       }, () => {
         const { index, correct } = latest.current;
         return events[index]?.notes.filter((note) => !correct.has(note.id)).map((note) => soundingMidi(note, score.key)) ?? [];
@@ -188,6 +274,7 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
       <h1>{score.title}</h1>
       <p>{progress.correct.size} of {total} notes played</p>
       <progress aria-label="Practice progress" max={total} value={progress.correct.size} />
+      <a className={styles.textButton} href="#sightstring-best-times">Best times</a>
     </header>
     <div className={styles.systems}>
       {score.staves.map((staff, index) => (staff.track ?? 1) === track && (
@@ -198,16 +285,40 @@ function PracticeTrack({ score, track }: { score: Score; track: number }) {
         </section>
       ))}
     </div>
+    <section className={styles.leaderboard} id="sightstring-best-times" aria-labelledby="sightstring-best-times-heading">
+      <h2 id="sightstring-best-times-heading">Best times</h2>
+      {attempts.length > 0 && <ol>
+        {attempts.map(({ id, durationMs, completedAt }) => <li key={id}>
+          <strong>{formatDuration(durationMs)}</strong>{" · "}
+          <time dateTime={completedAt}>{new Date(completedAt).toLocaleDateString()}</time>
+        </li>)}
+      </ol>}
+      {leaderboardState === "loading" && <p>Loading best times…</p>}
+      {leaderboardState === "ready" && !attempts.length && <p>No completed attempts yet.</p>}
+      {leaderboardState === "failed" && <div className={styles.actions}>
+        <p role="alert">Couldn’t load best times.</p>
+        <button className={styles.textButton} onClick={() => {
+          setLeaderboardState("loading");
+          setReload((current) => current + 1);
+        }}>Reload best times</button>
+      </div>}
+      {failedAttempts.length > 0 && <div className={styles.actions}>
+        <p role="alert">Some attempts couldn’t be saved.</p>
+        <button className={styles.textButton} onClick={() => failedAttempts.forEach((attempt) => void record(attempt))}>Retry saving attempts</button>
+      </div>}
+    </section>
     <div className={styles.transport}>
       <div aria-live="polite">
         <strong>{!event ? "Score complete" : state === "listening" ? "Listening" : state === "starting" ? "Starting microphone…" : "Play at your own pace"}</strong>
-        <p>{!event ? "You played every note." : state === "listening"
+        <p>{!event ? latestAttempt && `Time: ${formatDuration(latestAttempt.durationMs)}` : state === "listening"
           ? `${prompt} · ${remaining.map((note) => practiceNoteName(note, score.key)).join(", ")}`
           : paired ? "Use standard tuning and pluck both notes together." : "Use standard tuning and pluck one note at a time."}</p>
         {error && <p role="alert">{error}</p>}
       </div>
       {!event ? <button className={styles.transportButton} onClick={() => {
         const reset = { index: 0, correct: new Set<string>() };
+        startedAt.current = null;
+        setLatestAttempt(undefined);
         latest.current = reset;
         setProgress(reset);
         systems.current[events[0]?.staffIndex]?.scrollIntoView({ block: "nearest" });
@@ -443,6 +554,12 @@ export function Sightstring() {
   function random() { setScreen({ name: "random" }); }
   function generate() { setScreen({ name: "practice", score: generateRandomExercise(randomSettings), random: true }); }
 
+  async function addToLibrary(score: Score) {
+    const saved = await saveScore(score);
+    setScores((existing) => [saved, ...existing.filter((entry) => entry.id !== saved.id)]);
+    return saved;
+  }
+
   async function importPhotos(files: FileList | null) {
     if (!files?.length) return;
     const selected = Array.from(files);
@@ -457,13 +574,17 @@ export function Sightstring() {
     finally { setImporting(false); }
   }
 
+  const canSaveExercise = screen.name === "practice" && screen.random && !scores.some(({ id }) => id === screen.score.id);
   return <div className={styles.sightstring}>
     {screen.name === "practice" ? <Practice key={screen.score.id} score={screen.score}
-      onBack={screen.random ? random : back} onGenerate={screen.random ? generate : undefined} />
+      onBack={canSaveExercise ? random : back} onGenerate={screen.random ? generate : undefined}
+      onSave={canSaveExercise ? async (title) => {
+        const saved = await addToLibrary({ ...screen.score, title });
+        setScreen((current) => current.name === "practice" && current.score.id === saved.id
+          ? { ...current, score: saved } : current);
+      } : undefined} />
       : screen.name === "review" ? <Review initial={screen.score} editing={screen.editing} onBack={back} onSave={async (score) => {
-        const saved = await saveScore(score);
-        setScores((existing) => [saved, ...existing.filter((entry) => entry.id !== saved.id)]);
-        setScreen({ name: "practice", score: saved });
+        setScreen({ name: "practice", score: await addToLibrary(score) });
       }} />
         : screen.name === "random" ? <RandomPractice settings={randomSettings} onChange={setRandomSettings} onBack={back} onGenerate={generate} />
         : <>
@@ -502,7 +623,8 @@ export function Sightstring() {
                 <div className={styles.scoreRow}>
                   <div><strong>{score.title}</strong><p>{score.staves.reduce((count, staff) => count + staff.notes.length, 0)} notes</p></div>
                   <div className={styles.actions}>
-                    <button className={styles.textButton} disabled={importing} onClick={() => setScreen({ name: "review", score, editing: true })}>Edit</button>
+                    {!score.generated && <button className={styles.textButton} disabled={importing}
+                      onClick={() => setScreen({ name: "review", score, editing: true })}>Edit</button>}
                     <button className={styles.secondary} disabled={importing} onClick={() => setScreen({ name: "practice", score })}>Practice</button>
                   </div>
                 </div>

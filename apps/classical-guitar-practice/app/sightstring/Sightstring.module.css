@@ -109,6 +109,13 @@
 .accidental { font: normal 4cqw/1 "Apple Symbols", "Segoe UI Symbol", serif; transform: translate(-100%, -50%); }
 .randomForm { display: grid; gap: 1rem; }
 .exerciseLength { display: grid; gap: 0.25rem; max-width: 12rem; font-weight: 600; }
+.saveExercise { display: grid; gap: 0.65rem; max-width: 36rem; }
+.saveExercise input { margin-top: 0.25rem; }
+.leaderboard { scroll-margin-block: 4rem 8rem; }
+.leaderboard h2 { margin-bottom: 0.4rem; }
+.leaderboard ol { padding-inline-start: 1.6rem; }
+.leaderboard li { margin-block: 0.25rem; }
+.leaderboard time { color: var(--muted); }
 .strings { border: 0; min-width: 0; }
 .strings legend { font-weight: 600; margin-bottom: 0.35rem; }
 .stringGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.45rem; }

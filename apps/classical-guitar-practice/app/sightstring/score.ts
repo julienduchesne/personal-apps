@@ -29,10 +29,18 @@ export interface Score {
   id: string;
   title: string;
   key: number;
+  generated?: true;
   pages?: string[];
   staves: Staff[];
 }
 
+export interface PracticeAttempt {
+  id: string;
+  durationMs: number;
+  completedAt: string;
+}
+
+export const leaderboardSize = 10;
 export const steps = Array.from({ length: 22 }, (_, index) => index - 5);
 export const keys = ["C♭", "G♭", "D♭", "A♭", "E♭", "B♭", "F", "C", "G", "D", "A", "E", "B", "F♯", "C♯"];
 
@@ -76,7 +84,11 @@ export function scoreEvents(score: Score, track = 1) {
   });
 }
 
-export function exerciseStaff(id: string, notes: (Pick<Note, "step" | "accidental" | "voice"> & { beat?: number })[]): Staff {
+export function exerciseStaff(
+  id: string,
+  notes: (Pick<Note, "step" | "accidental" | "voice"> & { beat?: number })[],
+  noteId = (index: number) => `${id}-${index}`,
+): Staff {
   const spacing = 15;
   const positions = notes.map(({ step }) => (10 - step) * spacing / 2);
   const top = Math.max(63, 50 - Math.min(...positions));
@@ -85,7 +97,7 @@ export function exerciseStaff(id: string, notes: (Pick<Note, "step" | "accidenta
   return {
     width: 600, height: Math.max(190, top + bottom, top + 77), left: 28, right: 572, top, spacing,
     notes: notes.map(({ beat, ...note }, index) => ({
-      ...note, id: `${id}-${index}`, x: 115 + (beat ?? index) * 61, y: top + positions[index], hollow: false,
+      ...note, id: noteId(index), x: 115 + (beat ?? index) * 61, y: top + positions[index], hollow: false,
     })),
   };
 }
