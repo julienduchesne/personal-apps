@@ -18,6 +18,7 @@ const nav: NavItem[] = [
   { href: "/exercises", label: "Exercises", exact: true },
   { href: "/exercises/daily-pick", label: "Daily pick", sub: true },
   { href: "/pieces", label: "Pieces" },
+  { href: "/sightstring", label: "Sightstring" },
   { href: "/playtime", label: "Playtime" },
 ];
 
