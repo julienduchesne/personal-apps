@@ -60,15 +60,18 @@ describe("random sightreading", () => {
   });
 
   it("adds a playable bass note on beats 1 and 3 without changing the exercise length", () => {
-    const settings = { ...defaults, strings: [6, 5], firstFret: 0, lastFret: 0, noteCount: 4, withBass: true };
+    const settings = { ...defaults, strings: [6, 3], firstFret: 0, lastFret: 0, noteCount: 4, withBass: true };
     const score = generateRandomExercise(settings);
     const events = scoreEvents(score);
     expect(events.map(({ notes }) => notes.length)).toEqual([2, 1, 2, 1]);
     expect(events[0].notes.map((note) => [note.voice, soundingMidi(note, score.key)]))
-      .toEqual([["bass", 40], ["melody", 45]]);
+      .toEqual([["bass", 40], ["melody", 55]]);
     expect(events[0].notes[0].x).toBe(events[0].notes[1].x);
+    expect(events.flatMap(({ notes }) => notes.filter(({ voice }) => voice === "melody"))
+      .map((note) => soundingMidi(note, score.key))).toEqual([55, 55, 55, 55]);
     expect(scoreEvents(generateRandomExercise({ ...settings, withBass: false })).every(({ notes }) => notes.length === 1)).toBe(true);
-    expect(() => generateRandomExercise({ ...settings, strings: [6] })).toThrow("No playable bass and melody pairs");
+    expect(() => generateRandomExercise({ ...settings, strings: [6, 5, 4] })).toThrow("No playable bass and melody pairs");
+    expect(() => generateRandomExercise({ ...settings, strings: [3, 2, 1] })).toThrow("No playable bass and melody pairs");
     expect(() => generateRandomExercise({ ...settings, strings: [6, 1] })).toThrow("No playable bass and melody pairs");
   });
 });

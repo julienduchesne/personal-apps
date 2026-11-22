@@ -306,7 +306,7 @@ test("practices an optional bass and melody pair in the same beat", async ({ pag
         const destination = context.createMediaStreamDestination();
         window.addEventListener("sightstring-test-pair", () => {
           const now = context.currentTime + 0.02;
-          for (const frequency of [82.4069, 110]) {
+          for (const frequency of [82.4069, 195.9977]) {
             const string = context.createOscillator();
             const amplitude = context.createGain();
             string.frequency.value = frequency;
@@ -334,11 +334,16 @@ test("practices an optional bass and melody pair in the same beat", async ({ pag
   await withBass.check();
   await expect(generate).toBeDisabled();
   await page.getByRole("checkbox", { name: "String 5 (A)" }).check();
-  await page.getByLabel("Number of melody notes").fill("4");
+  await expect(generate).toBeDisabled();
+  await page.getByRole("checkbox", { name: "String 5 (A)" }).uncheck();
+  await page.getByRole("checkbox", { name: "String 3 (G)" }).check();
+  const melodyNotes = page.getByLabel("Number of melody notes");
+  await expect(melodyNotes).toHaveValue("40");
+  await melodyNotes.fill("4");
   await generate.click();
   await expect(page.getByText("0 of 6 notes played")).toBeVisible();
   await page.getByRole("button", { name: "Start listening" }).click();
-  await expect(page.getByText("Play together · Mi (E3), La (A3)", { exact: true })).toBeVisible();
+  await expect(page.getByText("Play together · Mi (E3), Sol (G4)", { exact: true })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event("sightstring-test-pair")));
   await expect(page.getByText("2 of 6 notes played")).toBeVisible();
   await expect(page.locator('[data-status="correct"]')).toHaveCount(2);
@@ -375,7 +380,7 @@ test("generates a playable random exercise for open strings and fret 18", async 
   await page.getByLabel("Last fret").selectOption("0");
   await expect(page.getByLabel("First fret")).toHaveValue("0");
   await page.getByRole("button", { name: "Generate exercise" }).click();
-  await expect(page.getByText("0 of 16 notes played")).toBeVisible();
+  await expect(page.getByText("0 of 40 notes played")).toBeVisible();
   await page.getByRole("button", { name: "Start listening" }).click();
   await expect(page.getByText("Play · Mi (E5)", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Practice settings" }).click();
@@ -387,9 +392,9 @@ test("generates a playable random exercise for open strings and fret 18", async 
   await page.getByRole("button", { name: "Start listening" }).click();
   await expect(page.getByText("Play · Si♭ (B♭6)", { exact: true })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("sightstring-test-play-note", { detail: 932.328 })));
-  await expect(page.getByText("1 of 16 notes played")).toBeVisible();
+  await expect(page.getByText("1 of 40 notes played")).toBeVisible();
   await page.getByRole("button", { name: "New exercise" }).click();
-  await expect(page.getByText("0 of 16 notes played")).toBeVisible();
+  await expect(page.getByText("0 of 40 notes played")).toBeVisible();
   await page.getByRole("button", { name: "Practice settings" }).click();
   await expect(page.getByLabel("First fret")).toHaveValue("18");
   await expect(page.getByLabel("Last fret")).toHaveValue("18");

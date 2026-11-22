@@ -60,11 +60,11 @@ export function RandomPractice({ settings, onChange, onGenerate, onBack }: {
           onChange={(event) => onChange({ ...settings, withBass: event.target.checked })} />
         Bass and melody together
       </label>
-      {settings.withBass && <p className={styles.local}>Adds a bass note on beats 1 and 3.</p>}
+      {settings.withBass && <p className={styles.local}>Bass uses strings 6–4 on beats 1 and 3. Melody uses strings 3–1.</p>}
       {!hasPitches && <p className={styles.local} role="status">
         {settings.strings.length ? "No natural notes in this range. Change the frets or strings, or allow sharps and flats." : "Select at least one string."}
       </p>}
-      {hasPitches && !hasBassPairs && <p role="status">Choose a string and fret range with a pair the microphone can distinguish.</p>}
+      {hasPitches && !hasBassPairs && <p role="status">Select strings from both groups and a fret range with a playable pair the microphone can distinguish.</p>}
       {!validLength && <p role="status">Enter a whole number from 1 to {maximumExerciseNotes}.</p>}
       <button className={styles.primary} type="submit" disabled={!canGenerate}>Generate exercise</button>
     </form>

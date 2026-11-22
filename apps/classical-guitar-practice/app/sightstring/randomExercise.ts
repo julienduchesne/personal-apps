@@ -47,24 +47,27 @@ function spellNotes(onsets: { melody: number; bass?: number }[], withBass: boole
   });
 }
 
-function availablePositions({ strings, firstFret, lastFret, allowAccidentals }: RandomSettings) {
+function availablePositions(
+  { strings, firstFret, lastFret, allowAccidentals }: RandomSettings,
+  voice?: Note["voice"],
+) {
   const availableFrets = frets.filter((fret) => fret >= firstFret && fret <= lastFret);
   return guitarStrings
-    .filter(({ number }) => strings.includes(number))
-    .flatMap(({ number, openMidi }) => availableFrets.map((fret) => ({ string: number, fret, pitch: openMidi + fret })))
+    .filter(({ number }) => strings.includes(number) && (!voice || (number >= 4) === (voice === "bass")))
+    .flatMap(({ openMidi }) => availableFrets.map((fret) => ({ fret, pitch: openMidi + fret })))
     .filter(({ pitch }) => allowAccidentals || spelling[pitch % 12][1] === null);
 }
 
-export function availablePitches(settings: RandomSettings) {
-  return [...new Set(availablePositions(settings).map(({ pitch }) => pitch))];
+export function availablePitches(settings: RandomSettings, voice?: Note["voice"]) {
+  return [...new Set(availablePositions(settings, voice).map(({ pitch }) => pitch))];
 }
 
 export function bassNotesByMelody(settings: RandomSettings) {
-  const positions = availablePositions(settings);
+  const bassPositions = availablePositions(settings, "bass");
   const pairs = new Map<number, Set<number>>();
-  for (const melody of positions) {
-    for (const bass of positions) {
-      if (bass.string <= melody.string || bass.pitch >= melody.pitch) continue;
+  for (const melody of availablePositions(settings, "melody")) {
+    for (const bass of bassPositions) {
+      if (bass.pitch >= melody.pitch) continue;
       // Open strings can ring without extending the left hand’s reach.
       if (bass.fret && melody.fret && Math.abs(bass.fret - melody.fret) > 4) continue;
       // A melody near a bass harmonic is ambiguous on a single microphone.
@@ -116,10 +119,10 @@ function choosePitch(pitches: number[], previous: number | undefined, chord: num
 export function generateRandomExercise(settings: RandomSettings): Score {
   const { noteCount } = settings;
   if (!isValidNoteCount(noteCount)) throw new Error("Invalid exercise length.");
-  const pitches = availablePitches(settings);
-  if (!pitches.length) throw new Error("No notes match the selected strings, frets, and accidentals.");
   const pairs = settings.withBass ? bassNotesByMelody(settings) : null;
   if (pairs?.size === 0) throw new Error("No playable bass and melody pairs in this range.");
+  const pitches = availablePitches(settings, settings.withBass ? "melody" : undefined);
+  if (!pitches.length) throw new Error("No notes match the selected strings, frets, and accidentals.");
 
   const scale = chooseScale(pitches, settings.allowAccidentals);
   const progression = progressions[Math.floor(Math.random() * progressions.length)];
