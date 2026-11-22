@@ -122,6 +122,62 @@ test("copies scores from this browser’s old library into object storage", asyn
   }
 });
 
+test("keeps tracks, lines, and appended photos in order", async ({ page }) => {
+  await page.goto("/sightstring");
+  const data = await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 900;
+    canvas.height = 680;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "white";
+    context.fillRect(0, 0, 900, 680);
+    context.fillStyle = "black";
+    for (const top of [65, 200, 366, 501]) {
+      for (let line = 0; line < 5; line++) context.fillRect(50, top + line * 18 - 1, 800, 2);
+      for (const x of [180, 350, 540]) {
+        const y = top + 54;
+        context.beginPath();
+        context.ellipse(x, y, 12, 8.5, -0.28, 0, Math.PI * 2);
+        context.fill();
+        context.fillRect(x + 10, y - 54, 2.5, 54);
+      }
+    }
+    for (const top of [65, 366]) {
+      for (const x of [50, 420, 849]) context.fillRect(x, top, 2, 207);
+    }
+    return canvas.toDataURL("image/png").split(",")[1];
+  });
+  const second = await printedPage(page);
+  await page.getByLabel("Upload score photos").setInputFiles([
+    { name: "paired-staves.png", mimeType: "image/png", buffer: Buffer.from(data, "base64") }, second,
+  ]);
+
+  await expect(page.getByText("Staff 1 of 5")).toBeVisible();
+  await expect(page.getByText("Page 1 · Line 1 · Track 1")).toBeVisible();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("Page 1 · Line 1 · Track 2")).toBeVisible();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("Page 1 · Line 2 · Track 1")).toBeVisible();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("Page 1 · Line 2 · Track 2")).toBeVisible();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("Page 2 · Line 1 · Track 1")).toBeVisible();
+
+  await page.getByLabel("Upload additional score photos").setInputFiles(second);
+  await expect(page.getByText("Page 3 · Line 1 · Track 1")).toBeVisible();
+  const title = `Duet ${crypto.randomUUID()}`;
+  await page.getByLabel("Score title").fill(title);
+  await page.getByRole("button", { name: "Save and practice" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(page.getByRole("region", { name: /track 1$/ })).toHaveCount(4);
+  await page.getByLabel("Practice track").selectOption("2");
+  await expect(page.getByRole("region", { name: /track 2$/ })).toHaveCount(2);
+  await expect(page.getByRole("region", { name: /track 1$/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to scores" }).click();
+  const saved = page.getByRole("region", { name: title });
+  await expect(saved.getByRole("link", { name: /^Download page/ })).toHaveCount(3);
+});
+
 test("turns the expected note green when microphone audio matches", async ({ page }) => {
   await page.addInitScript(() => {
     const media = navigator.mediaDevices;

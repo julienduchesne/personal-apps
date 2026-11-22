@@ -18,6 +18,9 @@ export interface Staff {
   right: number;
   top: number;
   spacing: number;
+  page?: number;
+  line?: number;
+  track?: number;
   notes: Note[];
 }
 
@@ -52,8 +55,9 @@ export function soundingMidi(note: Note, key: number) {
   return 12 * octave + [0, 2, 4, 5, 7, 9, 11][letter] + alteration;
 }
 
-export function scoreEvents(score: Score) {
+export function scoreEvents(score: Score, track = 1) {
   return score.staves.flatMap((staff, staffIndex) => {
+    if ((staff.track ?? 1) !== track) return [];
     const groups: { staffIndex: number; notes: Note[] }[] = [];
     for (const note of [...staff.notes].sort((a, b) => a.x - b.x)) {
       const last = groups.at(-1);

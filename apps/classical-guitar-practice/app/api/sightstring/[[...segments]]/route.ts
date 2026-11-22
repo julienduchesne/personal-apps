@@ -41,6 +41,9 @@ function isScore(value: unknown, id: string): value is Score {
       || !range(entry.left, 0, entry.width) || !range(entry.right, entry.left, entry.width)
       || !range(entry.top, 0, entry.height) || !range(entry.spacing, 1, entry.height)
       || !Array.isArray(entry.notes) || entry.notes.length > 500 || !entry.notes.every(isNote)) return false;
+    for (const [field, max] of [["page", 24], ["line", 250], ["track", 32]] as const) {
+      if (entry[field] !== undefined && (!range(entry[field], 1, max) || !Number.isInteger(entry[field]))) return false;
+    }
     const crop = entry.imageCrop;
     return crop === undefined || (object(crop) && range(crop.width, entry.width, 2200) && range(crop.height, entry.height, 2200)
       && range(crop.x, 0, crop.width - entry.width) && range(crop.y, 0, crop.height - entry.height));

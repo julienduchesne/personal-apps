@@ -1,83 +1,14 @@
 import { steps, type Note, type Staff } from "./score";
 
-interface Raster {
-  width: number;
-  height: number;
-  pixels: Uint8Array;
-}
-
-function deskew({ width, height, pixels }: Raster) {
-  let slope = 0;
-  let best = 0;
-  const columns = Array.from({ length: Math.floor(width / 11) }, (_, i) => i * 9 + Math.floor(width / 12));
-  for (const increment of [0, ...Array.from({ length: 49 }, (_, i) => i - 24).filter(Boolean)]) {
-    const candidate = increment * 0.0025;
-    const offsets = columns.map((x) => Math.round((x - width / 2) * candidate));
-    const margin = Math.ceil(width * Math.abs(candidate) / 2) + 1;
-    let score = 0;
-    for (let y = margin; y < height - margin; y++) {
-      let ink = 0;
-      for (let i = 0; i < columns.length; i++) {
-        if (pixels[(y + offsets[i]) * width + columns[i]] < 150) ink++;
-      }
-      if (ink > columns.length / 2) score += ink * ink;
-    }
-    if (score > best) {
-      best = score;
-      slope = candidate;
-    }
-  }
-  if (slope === 0) return pixels;
-  const shifted = new Uint8Array(pixels.length).fill(255);
-  for (let x = 0; x < width; x++) {
-    const offset = Math.round((x - width / 2) * slope);
-    for (let y = Math.max(0, -offset); y < Math.min(height, height - offset); y++) {
-      shifted[y * width + x] = pixels[(y + offset) * width + x];
-    }
-  }
-  return shifted;
-}
-
-interface Line { y: number; left: number; right: number }
-
-function findLines({ width, height, pixels }: Raster) {
-  const lines: Line[] = [];
-  let peak: Line | undefined;
-  const gap = Math.max(2, Math.floor(width / 48));
-  for (let y = 0; y < height; y++) {
-    const line = { y, left: 0, right: 0 };
-    let left = 0;
-    let previous = -gap - 1;
-    let ink = 0;
-    for (let x = 0; x < width; x++) {
-      if (pixels[y * width + x] >= 155) continue;
-      if (x - previous > gap) {
-        left = x;
-        ink = 0;
-      }
-      previous = x;
-      ink++;
-      if (x - left > line.right - line.left && ink * 2 > x - left) {
-        line.left = left;
-        line.right = x;
-      }
-    }
-    if (line.right - line.left >= width * 0.36) {
-      if (!peak || line.right - line.left > peak.right - peak.left) peak = line;
-    } else if (peak) {
-      lines.push(peak);
-      peak = undefined;
-    }
-  }
-  if (peak) lines.push(peak);
-  return lines;
-}
+import { adaptiveInk, findStaves, type Raster, type StaffGeometry } from "./staffGeometry";
 
 function template(spacing: number, width: number) {
   const upper: number[] = [];
   const lower: number[] = [];
   const exterior: number[] = [];
   const core: number[] = [];
+  const leftEdge: number[] = [];
+  const rightEdge: number[] = [];
   const radius = Math.ceil(spacing * 0.9);
   const stride = Math.max(1, Math.floor(spacing / 12));
   for (let y = -radius; y <= radius; y += stride) {
@@ -88,11 +19,14 @@ function template(spacing: number, width: number) {
       if (Math.abs(v) >= 0.16 && (u / 0.60) ** 2 + (v / 0.46) ** 2 <= 0.98) {
         (v < 0 ? upper : lower).push(index);
       }
+      if (Math.abs(u) >= 0.43 && Math.abs(u) <= 0.61 && Math.abs(v) <= 0.23) {
+        (u < 0 ? leftEdge : rightEdge).push(index);
+      }
       if (Math.abs(u) <= 0.24 && Math.abs(v) <= 0.17) core.push(index);
       if (Math.abs(u) <= 0.43 && Math.abs(v) >= 0.54 && Math.abs(v) <= 0.83) exterior.push(index);
     }
   }
-  return { upper, lower, exterior, core, radius };
+  return { upper, lower, exterior, core, leftEdge, rightEdge, radius };
 }
 
 function hasStem(ink: Uint8Array, width: number, x: number, y: number, spacing: number) {
@@ -115,14 +49,15 @@ function hasStem(ink: Uint8Array, width: number, x: number, y: number, spacing: 
 function findNotes({ width, height, pixels }: Raster, top: number, spacing: number, left: number, right: number) {
   const start = Math.max(0, Math.floor(top - spacing * 4.2));
   const end = Math.min(height, Math.ceil(top + spacing * 8.7));
-  const firstX = Math.max(Math.floor(spacing * 1.5), left + Math.floor(spacing * 3.35));
+  const firstX = Math.max(Math.floor(spacing * 1.5), left + Math.floor(spacing * 4.15));
   const lastX = Math.min(width - Math.floor(spacing * 1.5) - 1, right - Math.floor(spacing * 0.4));
+  const mask = adaptiveInk({ width, height, pixels }, true);
   const ink = new Uint8Array((end - start) * width);
   for (let y = start; y < end; y++) {
     const row = y * width;
     for (let x = 0; x < width; x++) {
       const first = x;
-      while (x < width && pixels[row + x] < 168) x++;
+      while (x < width && mask[row + x]) x++;
       // Mask horizontal staff lines and beams before matching noteheads.
       if (x - first <= Math.floor(spacing * 1.88)) ink.fill(1, (y - start) * width + first, (y - start) * width + x);
     }
@@ -150,7 +85,11 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
         const solid = core >= 0.5 && Math.min(upper, lower) >= 0.53;
         const hollow = core <= 0.36;
         if (!solid && !hollow) continue;
-        if (solid && !hasStem(ink, width, x, y - start, spacing)) continue;
+        if (!hasStem(ink, width, x, y - start, spacing)) {
+          // Whole notes lack stems but still have a wider, closed outline than fingering digits.
+          if (solid || Math.min(upper, lower) < 0.59 || edge >= 0.17 || x - left < 5 * spacing
+            || coverage(samples.leftEdge, center) < 0.51 || coverage(samples.rightEdge, center) < 0.51) continue;
+        }
         candidates.push({
           x, y, step, hollow,
           strength: (upper + lower) / 2 - edge * 0.9 + (solid ? core : 1 - core) * 0.17 - Math.abs(offset) * 0.12,
@@ -165,6 +104,42 @@ function findNotes({ width, height, pixels }: Raster, top: number, spacing: numb
     }
   }
   return selected.sort((a, b) => a.x - b.x);
+}
+
+function flattenStaff(raster: Raster, geometry: StaffGeometry) {
+  const { left, right, columns, spacing } = geometry;
+  const x0 = Math.max(0, left - Math.round(spacing * 1.6));
+  const width = Math.min(raster.width - 1, right + Math.round(spacing * 1.6)) - x0 + 1;
+  const top = Math.ceil(spacing * 4.4);
+  const height = top + Math.ceil(spacing * 9.1);
+  const pixels = new Uint8Array(width * height).fill(255);
+  for (let x = 0; x < width; x++) {
+    const sourceX = x + x0;
+    const source = columns[sourceX];
+    for (let y = 0; y < height; y++) {
+      const sourceY = source.top + (y - top) * source.spacing / spacing;
+      const row = Math.floor(sourceY);
+      if (row < 0 || row + 1 >= raster.height) continue;
+      const pixel = row * raster.width + sourceX;
+      const amount = sourceY - row;
+      pixels[y * width + x] = Math.round(raster.pixels[pixel] * (1 - amount) + raster.pixels[pixel + raster.width] * amount);
+    }
+  }
+
+  return { width, height, top, pixels, left: left - x0, right: right - x0 };
+}
+
+export function readStaffRasters(raster: Raster) {
+  return findStaves(raster, adaptiveInk(raster)).map((geometry) => {
+    const crop = flattenStaff(raster, geometry);
+    const { top, left, right } = crop;
+    const { spacing, line, track } = geometry;
+    const notes: Note[] = findNotes(crop, top, spacing, left, right).map((note) => ({
+      id: crypto.randomUUID(), x: note.x, y: note.y, step: note.step,
+      accidental: null, hollow: note.hollow,
+    }));
+    return { crop, staff: { width: crop.width, height: crop.height, top, spacing, left, right, line, track, notes } };
+  });
 }
 
 export async function scanPage(file: File, savedPhoto?: string): Promise<{ staves: Staff[]; photo: string }> {
@@ -196,46 +171,19 @@ export async function scanPage(file: File, savedPhoto?: string): Promise<{ stave
   for (let i = 0; i < gray.length; i++) {
     gray[i] = (data.data[4 * i] * 77 + data.data[4 * i + 1] * 150 + data.data[4 * i + 2] * 29) >> 8;
   }
-  const pixels = deskew({ width, height, pixels: gray });
-  let staffImage = photo;
-  if (pixels !== gray) {
-    for (let i = 0; i < pixels.length; i++) {
-      data.data[4 * i] = data.data[4 * i + 1] = data.data[4 * i + 2] = pixels[i];
+  const staves = readStaffRasters({ width, height, pixels: gray }).map(({ crop, staff }): Staff => {
+    const sheet = document.createElement("canvas");
+    sheet.width = crop.width;
+    sheet.height = crop.height;
+    const context = sheet.getContext("2d")!;
+    const output = context.createImageData(crop.width, crop.height);
+    for (let i = 0; i < crop.pixels.length; i++) {
+      output.data[4 * i] = output.data[4 * i + 1] = output.data[4 * i + 2] = crop.pixels[i];
+      output.data[4 * i + 3] = 255;
     }
-    ctx.putImageData(data, 0, 0);
-    staffImage = canvas.toDataURL("image/jpeg", 0.86);
-  }
-  const raster = { width, height, pixels };
-  const lines = findLines(raster);
-  const staves: Staff[] = [];
-
-  for (let i = 0; i + 4 < lines.length;) {
-    const group = lines.slice(i, i + 5);
-    const top = group[0].y;
-    const spacing = (group[4].y - top) / 4;
-    const left = group.map((line) => line.left).sort((a, b) => a - b)[2];
-    const right = group.map((line) => line.right).sort((a, b) => a - b)[2];
-    const regular = group.every((line, index) => Math.abs(line.y - top - spacing * index) <= Math.max(2, spacing * 0.15)
-      && Math.abs(line.left - left) < width / 10 && Math.abs(line.right - right) < width / 10);
-    if (!regular || spacing < 6 || spacing >= width / 8) {
-      i++;
-      continue;
-    }
-    i += 5;
-
-    const x = Math.max(0, left - Math.ceil(width * 0.035));
-    const y = Math.max(0, Math.floor(top - spacing * 3.8));
-    const cropWidth = Math.min(width, right + Math.ceil(width * 0.035)) - x;
-    const cropHeight = Math.min(height, Math.ceil(top + spacing * 9.1)) - y;
-    const notes: Note[] = findNotes(raster, top, spacing, left, right).map((note) => ({
-      id: crypto.randomUUID(), x: note.x - x, y: note.y - y, step: note.step,
-      accidental: null, hollow: note.hollow,
-    }));
-    staves.push({
-      image: staffImage, imageCrop: { x, y, width, height }, width: cropWidth, height: cropHeight,
-      top: top - y, spacing, left: left - x, right: right - x, notes,
-    });
-  }
+    context.putImageData(output, 0, 0);
+    return { ...staff, image: sheet.toDataURL("image/jpeg", 0.86) };
+  });
   if (!staves.length) throw new Error("No five-line staff found. Photograph a flat, well-lit page straight on.");
   return { staves, photo };
 }

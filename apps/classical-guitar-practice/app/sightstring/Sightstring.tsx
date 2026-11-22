@@ -79,7 +79,22 @@ function StaffPaper({ staff, active, correct, reviewing, selected, onPick }: {
 }
 
 function Practice({ score, onBack }: { score: Score; onBack: () => void }) {
-  const events = useMemo(() => scoreEvents(score), [score]);
+  const [track, setTrack] = useState(1);
+  const tracks = [...new Set(score.staves.filter((staff) => staff.notes.length > 0).map((staff) => staff.track ?? 1))].sort((a, b) => a - b);
+  const selected = tracks.includes(track) ? track : tracks[0] ?? 1;
+  return <>
+    <button className={styles.textButton} onClick={onBack}>Back to scores</button>
+    {tracks.length > 1 && <label className={styles.trackPicker}>Practice track
+      <select value={selected} onChange={(event) => setTrack(Number(event.target.value))}>
+        {tracks.map((number) => <option key={number} value={number}>Track {number}</option>)}
+      </select>
+    </label>}
+    <PracticeTrack key={selected} score={score} track={selected} />
+  </>;
+}
+
+function PracticeTrack({ score, track }: { score: Score; track: number }) {
+  const events = useMemo(() => scoreEvents(score, track), [score, track]);
   const [progress, setProgress] = useState({ index: 0, correct: new Set<string>() });
   const [state, setState] = useState<"idle" | "starting" | "listening">("idle");
   const [error, setError] = useState("");
@@ -144,15 +159,16 @@ function Practice({ score, onBack }: { score: Score; onBack: () => void }) {
 
   const remaining = event?.notes.filter((note) => !progress.correct.has(note.id)) ?? [];
   return <>
-    <button className={styles.textButton} onClick={onBack}>Back to scores</button>
     <header className={styles.heading}>
       <h1>{score.title}</h1>
       <p>{progress.correct.size} of {total} notes played</p>
       <progress aria-label="Practice progress" max={total} value={progress.correct.size} />
     </header>
     <div className={styles.systems}>
-      {score.staves.map((staff, index) => (
-        <section key={index} ref={(element) => { systems.current[index] = element; }} aria-label={`Staff ${index + 1}`}>
+      {score.staves.map((staff, index) => (staff.track ?? 1) === track && (
+        <section key={index} ref={(element) => { systems.current[index] = element; }}
+          aria-label={staff.page && staff.line ? `Page ${staff.page}, line ${staff.line}, track ${track}` : `Staff ${index + 1}`}>
+          {staff.page && staff.line && <p className={styles.location}>Page {staff.page} · Line {staff.line}</p>}
           <StaffPaper staff={staff} active={staffIndex === index ? new Set(remaining.map((note) => note.id)) : undefined} correct={progress.correct} />
         </section>
       ))}
@@ -167,12 +183,29 @@ function Practice({ score, onBack }: { score: Score; onBack: () => void }) {
       </div>
       {!event ? <button className={styles.transportButton} onClick={() => {
         setProgress({ index: 0, correct: new Set() });
-        systems.current[0]?.scrollIntoView({ block: "nearest" });
+        systems.current[events[0]?.staffIndex]?.scrollIntoView({ block: "nearest" });
       }}>Play again</button>
         : state === "listening" ? <button className={styles.transportButton} onClick={stop}>Pause</button>
           : <button disabled={state === "starting"} className={styles.transportButton} onClick={start}>Start listening</button>}
     </div>
   </>;
+}
+
+async function scanPhotos(files: File[], offset = 0, savedPhotos?: string[]) {
+  if (files.length + offset > 24) throw new Error("A score can have up to 24 photos.");
+  const pages: string[] = [];
+  const staves: Staff[] = [];
+  for (const [index, file] of files.entries()) {
+    const page = offset + index + 1;
+    try {
+      const result = await scanPage(file, savedPhotos?.[index]);
+      pages.push(result.photo);
+      staves.push(...result.staves.map((staff) => ({ ...staff, page })));
+    } catch (cause) {
+      throw new Error(`Page ${page}: ${cause instanceof Error ? cause.message : "Couldn’t read this photo."}`);
+    }
+  }
+  return { pages, staves };
 }
 
 function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => void; onSave: (score: Score) => Promise<void> }) {
@@ -182,6 +215,9 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [addingPages, setAddingPages] = useState(false);
+  const extraCamera = useRef<HTMLInputElement>(null);
+  const extraPhotos = useRef<HTMLInputElement>(null);
   const staff = score.staves[index];
   const existing = staff.notes.some((note) => note.id === selection?.id);
 
@@ -215,6 +251,23 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
     setIndex(next);
   }
 
+  async function appendPhotos(files: FileList | null) {
+    if (!files?.length) return;
+    const selected = Array.from(files);
+    const pages = score.pages ?? [];
+    setError("");
+    setAddingPages(true);
+    try {
+      const scans = await scanPhotos(selected, pages.length);
+      setScore((current) => ({ ...current, pages: [...pages, ...scans.pages], staves: [...current.staves, ...scans.staves] }));
+      move(score.staves.length);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Couldn’t add the photos.");
+    } finally {
+      setAddingPages(false);
+    }
+  }
+
   async function save() {
     setError("");
     setSaving(true);
@@ -237,7 +290,9 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
     </div>
     <div className={styles.staffNavigation}>
       <button className={styles.secondary} disabled={index === 0} onClick={() => move(index - 1)}>Previous</button>
-      <strong>Staff {index + 1} of {score.staves.length}</strong>
+      <strong className={styles.staffCounter}>Staff {index + 1} of {score.staves.length}
+        {staff.page && staff.line && <span className={styles.location}>Page {staff.page} · Line {staff.line} · Track {staff.track ?? 1}</span>}
+      </strong>
       <button className={styles.secondary} disabled={index + 1 === score.staves.length} onClick={() => move(index + 1)}>Next</button>
     </div>
     <StaffPaper staff={staff} reviewing selected={selection?.id} onPick={pick} />
@@ -273,8 +328,17 @@ function Review({ initial, onBack, onSave }: { initial: Score; onBack: () => voi
         {existing && <button className={styles.secondary} type="button" onClick={() => update(null)}>Remove note</button>}
       </div>
     </form>}
+    {(score.pages?.length ?? 24) < 24 && <div className={styles.actions} aria-label="Add pages">
+      <button className={styles.secondary} disabled={addingPages || saving} onClick={() => extraCamera.current?.click()}>Take another photo</button>
+      <button className={styles.secondary} disabled={addingPages || saving} onClick={() => extraPhotos.current?.click()}>Add photos</button>
+      <input hidden ref={extraCamera} aria-label="Take an extra score photo" type="file" accept="image/*" capture="environment"
+        onChange={(event) => { void appendPhotos(event.target.files); event.target.value = ""; }} />
+      <input hidden ref={extraPhotos} aria-label="Upload additional score photos" type="file" accept="image/*" multiple
+        onChange={(event) => { void appendPhotos(event.target.files); event.target.value = ""; }} />
+      {addingPages && <span role="status">Reading additional pages…</span>}
+    </div>}
     {error && <p role="alert">{error}</p>}
-    <button className={styles.primary} disabled={saving || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
+    <button className={styles.primary} disabled={saving || addingPages || !score.title.trim() || !score.staves.some((entry) => entry.notes.length)} onClick={save}>
       {saving ? "Saving…" : "Save and practice"}
     </button>
   </>;
@@ -327,19 +391,7 @@ export function Sightstring() {
     setError("");
     setImporting(true);
     try {
-      const files = await loadFiles();
-      if (files.length > 24) throw new Error("Choose up to 24 pages at a time.");
-      const staves: Staff[] = [];
-      const pages: string[] = [];
-      for (const [index, file] of files.entries()) {
-        try {
-          const scan = await scanPage(file, savedPhotos?.[index]);
-          pages.push(scan.photo);
-          staves.push(...scan.staves);
-        } catch (cause) {
-          throw new Error(`Page ${index + 1}: ${cause instanceof Error ? cause.message : "Couldn’t read this photo."}`);
-        }
-      }
+      const { pages, staves } = await scanPhotos(await loadFiles(), 0, savedPhotos);
       setRescanFor(null);
       setScreen({ name: "review", score: {
         id: existing?.id ?? crypto.randomUUID(), title: existing?.title ?? "Untitled score",
