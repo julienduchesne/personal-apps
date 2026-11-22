@@ -396,7 +396,7 @@ export function Sightstring() {
     { name: "library" | "random" } | { name: "review"; score: Score; editing: boolean } | { name: "practice"; score: Score; random?: boolean }
   >({ name: "library" });
   const [randomSettings, setRandomSettings] = useState<RandomSettings>({
-    strings: guitarStrings.map(({ number }) => number), firstFret: 0, lastFret: 4,
+    strings: guitarStrings.map(({ number }) => number), firstFret: 0, lastFret: 4, allowAccidentals: true,
   });
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");

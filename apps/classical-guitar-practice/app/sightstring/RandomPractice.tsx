@@ -1,4 +1,4 @@
-import { frets, guitarStrings, type RandomSettings } from "./randomExercise";
+import { availablePitches, frets, guitarStrings, type RandomSettings } from "./randomExercise";
 import styles from "./Sightstring.module.css";
 
 function fretLabel(fret: number) {
@@ -11,13 +11,14 @@ export function RandomPractice({ settings, onChange, onGenerate, onBack }: {
   onGenerate: () => void;
   onBack: () => void;
 }) {
+  const canGenerate = availablePitches(settings).length > 0;
   return <>
     <button className={styles.textButton} onClick={onBack}>Back to scores</button>
     <header className={styles.heading}>
       <h1>Random sightreading</h1>
       <p>Choose the strings and frets to use in a 16-note exercise.</p>
     </header>
-    <form className={styles.randomForm} onSubmit={(event) => { event.preventDefault(); onGenerate(); }}>
+    <form className={styles.randomForm} onSubmit={(event) => { event.preventDefault(); if (canGenerate) onGenerate(); }}>
       <fieldset className={styles.strings}>
         <legend>Strings</legend>
         <div className={styles.stringGrid}>
@@ -43,8 +44,15 @@ export function RandomPractice({ settings, onChange, onGenerate, onBack }: {
           {frets.filter((fret) => fret >= settings.firstFret).map((fret) => <option key={fret} value={fret}>{fretLabel(fret)}</option>)}
         </select></label>
       </div>
-      {!settings.strings.length && <p className={styles.local} role="status">Select at least one string.</p>}
-      <button className={styles.primary} type="submit" disabled={!settings.strings.length}>Generate exercise</button>
+      <label className={styles.checkbox}>
+        <input type="checkbox" checked={settings.allowAccidentals}
+          onChange={(event) => onChange({ ...settings, allowAccidentals: event.target.checked })} />
+        Allow sharps and flats
+      </label>
+      {!canGenerate && <p className={styles.local} role="status">
+        {settings.strings.length ? "No natural notes in this range. Change the frets or strings, or allow sharps and flats." : "Select at least one string."}
+      </p>}
+      <button className={styles.primary} type="submit" disabled={!canGenerate}>Generate exercise</button>
     </form>
   </>;
 }

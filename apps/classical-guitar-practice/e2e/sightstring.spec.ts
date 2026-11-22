@@ -346,3 +346,24 @@ test("generates a playable random exercise for open strings and fret 18", async 
   await expect(page.getByLabel("First fret")).toHaveValue("18");
   await expect(page.getByLabel("Last fret")).toHaveValue("18");
 });
+
+test("can exclude sharps and flats from random sightreading", async ({ page }) => {
+  await page.goto("/sightstring");
+  await page.getByRole("button", { name: "Set up random sightreading" }).click();
+  const strings = page.getByRole("group", { name: "Strings" }).getByRole("checkbox");
+  for (const string of (await strings.all()).slice(0, 5)) await string.uncheck();
+  await page.getByLabel("Last fret").selectOption("18");
+  await page.getByLabel("First fret").selectOption("18");
+  const accidentals = page.getByRole("checkbox", { name: "Allow sharps and flats" });
+  const generate = page.getByRole("button", { name: "Generate exercise" });
+  await expect(accidentals).toBeChecked();
+  await expect(generate).toBeEnabled();
+  await accidentals.uncheck();
+  await expect(generate).toBeDisabled();
+  await expect(page.getByRole("status")).toContainText("No natural notes");
+  await page.getByLabel("First fret").selectOption("17");
+  await generate.click();
+  await expect(page.getByText("0 of 16 notes played")).toBeVisible();
+  await page.getByRole("button", { name: "Practice settings" }).click();
+  await expect(accidentals).not.toBeChecked();
+});

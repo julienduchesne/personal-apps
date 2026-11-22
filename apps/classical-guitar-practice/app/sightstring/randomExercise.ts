@@ -15,6 +15,7 @@ export interface RandomSettings {
   strings: number[];
   firstFret: number;
   lastFret: number;
+  allowAccidentals: boolean;
 }
 
 const spelling: [letter: number, accidental: Accidental][] = [
@@ -35,12 +36,17 @@ function spellNotes(midiPitches: number[]): Pick<Note, "step" | "accidental">[] 
   });
 }
 
-export function generateRandomExercise({ strings, firstFret, lastFret }: RandomSettings): Score {
+export function availablePitches({ strings, firstFret, lastFret, allowAccidentals }: RandomSettings) {
   const availableFrets = frets.filter((fret) => fret >= firstFret && fret <= lastFret);
-  const pitches = [...new Set(guitarStrings
+  return [...new Set(guitarStrings
     .filter(({ number }) => strings.includes(number))
-    .flatMap(({ openMidi }) => availableFrets.map((fret) => openMidi + fret)))];
-  if (!pitches.length) throw new Error("Choose at least one string and a valid fret range.");
+    .flatMap(({ openMidi }) => availableFrets.map((fret) => openMidi + fret)))]
+    .filter((pitch) => allowAccidentals || spelling[pitch % 12][1] === null);
+}
+
+export function generateRandomExercise(settings: RandomSettings): Score {
+  const pitches = availablePitches(settings);
+  if (!pitches.length) throw new Error("No notes match the selected strings, frets, and accidentals.");
 
   const notes: number[] = [];
   for (let index = 0; index < 16; index++) {
