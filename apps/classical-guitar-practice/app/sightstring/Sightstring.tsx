@@ -5,6 +5,8 @@ import { DeletedScoreError, deleteLocalScore, deleteScore, downloadUrl, listBest
 import { guitarStrings, suggestFingerings } from "./fingering";
 import { listen } from "./microphone";
 import { playScore } from "./playback";
+import { listenForSpeech, spokenPitch } from "./speech";
+import type { PracticeMode } from "./score";
 import { scanPage } from "./recognition";
 import { RandomPractice } from "./RandomPractice";
 import { generateRandomExercise, type RandomSettings } from "./randomExercise";
@@ -152,7 +154,8 @@ function Practice({ score, onBack, onGenerate, onSave }: {
 }) {
   const [track, setTrack] = useState(1);
   const [showFingering, setShowFingering] = useState(false);
-  const [scoreView, setScoreView] = useState<"photo" | "notation">("photo");
+  const [scoreView, setScoreView] = useState<"photo" | "notation">("notation");
+  const [mode, setMode] = useState<PracticeMode>("guitar");
   const [title, setTitle] = useState(score.title);
   const [naming, setNaming] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -195,6 +198,13 @@ function Practice({ score, onBack, onGenerate, onSave }: {
     </form>}
     {saveMessage && <p role={onSave ? "alert" : "status"}>{saveMessage}</p>}
     <div className={styles.practiceOptions}>
+      <label className={styles.trackPicker}>Practice mode
+        <select value={mode} onChange={(event) => setMode(event.target.value as PracticeMode)}>
+          <option value="guitar">Play guitar</option>
+          <option value="solfege">Say solfège (Sol, Mi)</option>
+          <option value="letters">Say letters (G, E)</option>
+        </select>
+      </label>
       {tracks.length > 1 && <label className={styles.trackPicker}>Practice track
         <select value={selected} onChange={(event) => setTrack(Number(event.target.value))}>
           {tracks.map((number) => <option key={number} value={number}>Track {number}</option>)}
@@ -213,7 +223,9 @@ function Practice({ score, onBack, onGenerate, onSave }: {
     </div>
     {hasPhoto && scoreView === "notation" && <p className={styles.location}>Use the photo to check any missing markings.</p>}
     {showFingering && <p className={styles.location}>Fretting fingers are suggested where none were set. 0 means open string.</p>}
-    <PracticeTrack key={selected} score={score} track={selected} showPhoto={scoreView === "photo"} showFingering={showFingering} />
+    {mode !== "guitar" && <p className={styles.location}>Say one note name at a time, including any sharp or flat. Your browser may use an online speech recognition service.</p>}
+    <PracticeTrack key={`${selected}-${mode}`} mode={mode} score={score} track={selected}
+      showPhoto={scoreView === "photo"} showFingering={showFingering} />
   </>;
 }
 
@@ -241,8 +253,8 @@ function bestTimes(attempts: PracticeAttempt[]) {
     .slice(0, leaderboardSize);
 }
 
-function PracticeTrack({ score, track, showPhoto, showFingering }: {
-  score: Score; track: number; showPhoto: boolean; showFingering: boolean;
+function PracticeTrack({ score, track, mode, showPhoto, showFingering }: {
+  score: Score; track: number; mode: PracticeMode; showPhoto: boolean; showFingering: boolean;
 }) {
   const events = useMemo(() => scoreEvents(score, track), [score, track]);
   const fingers = useMemo(() => showFingering ? suggestFingerings(score, track) : undefined, [score, showFingering, track]);
@@ -250,6 +262,7 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
   const latest = useRef(progress);
   const [state, setState] = useState<"idle" | "starting" | "listening">("idle");
   const [error, setError] = useState("");
+  const [speechMiss, setSpeechMiss] = useState(false);
   const [attempts, setAttempts] = useState<PracticeAttempt[]>([]);
   const [latestAttempt, setLatestAttempt] = useState<PracticeAttempt>();
   const [failedAttempts, setFailedAttempts] = useState<PracticeAttempt[]>([]);
@@ -318,7 +331,7 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
 
   useEffect(() => {
     const controller = new AbortController();
-    listBestAttempts(score.id, track, controller.signal).then((stored) => {
+    listBestAttempts(score.id, track, controller.signal, mode).then((stored) => {
       if (controller.signal.aborted) return;
       setAttempts((current) => bestTimes([...stored, ...current]));
       setLeaderboardState("ready");
@@ -326,41 +339,55 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
       if (!controller.signal.aborted) setLeaderboardState("failed");
     });
     return () => controller.abort();
-  }, [score.id, track, reload]);
+  }, [score.id, track, mode, reload]);
 
   async function record(attempt: PracticeAttempt) {
     setFailedAttempts((current) => current.filter(({ id }) => id !== attempt.id));
     try {
-      await saveAttempt(score.id, track, attempt);
+      await saveAttempt(score.id, track, attempt, mode);
       setAttempts((current) => bestTimes([...current, attempt]));
     } catch {
       setFailedAttempts((current) => [...current, attempt]);
     }
   }
 
+  function acceptNote(matchesPitch: (note: Note) => boolean) {
+    const previous = latest.current;
+    const current = events[previous.index];
+    const matches = current?.notes.filter((note) => !previous.correct.has(note.id) && matchesPitch(note));
+    if (!matches?.length) return false;
+    const correct = new Set([...previous.correct, ...matches.map((note) => note.id)]);
+    const next = { index: previous.index + Number(current.notes.every((note) => correct.has(note.id))), correct };
+    latest.current = next;
+    setProgress(next);
+    const now = performance.now();
+    startedAt.current ??= now;
+    if (next.index === events.length) {
+      const attempt = { id: crypto.randomUUID(), durationMs: Math.round(now - startedAt.current), completedAt: new Date().toISOString() };
+      setLatestAttempt(attempt);
+      void record(attempt);
+    }
+    return true;
+  }
+
   async function start() {
     const controller = new AbortController();
     microphone.current = controller;
     setError("");
+    setSpeechMiss(false);
     setState("starting");
     try {
-      await listen((midi) => {
-        const previous = latest.current;
-        const current = events[previous.index];
-        const matches = current?.notes.filter((note) => soundingMidi(note, score.key) === midi && !previous.correct.has(note.id));
-        if (!matches?.length) return;
-        const correct = new Set([...previous.correct, ...matches.map((note) => note.id)]);
-        const next = { index: previous.index + Number(current.notes.every((note) => correct.has(note.id))), correct };
-        latest.current = next;
-        setProgress(next);
-        const now = performance.now();
-        startedAt.current ??= now;
-        if (next.index === events.length) {
-          const attempt = { id: crypto.randomUUID(), durationMs: Math.round(now - startedAt.current), completedAt: new Date().toISOString() };
-          setLatestAttempt(attempt);
-          void record(attempt);
-        }
-      }, () => {
+      if (mode !== "guitar") {
+        listenForSpeech(mode, controller.signal, () => setState("listening"), (pitch) => {
+          const next = events[latest.current.index]?.notes.find((note) => !latest.current.correct.has(note.id));
+          if (next) setSpeechMiss(!acceptNote((note) => note.id === next.id && spokenPitch(note, score.key, mode) === pitch));
+        }, (message) => {
+          stop();
+          setError(message);
+        });
+        return;
+      }
+      await listen((midi) => acceptNote((note) => soundingMidi(note, score.key) === midi), () => {
         const { index, correct } = latest.current;
         return events[index]?.notes.filter((note) => !correct.has(note.id)).map((note) => soundingMidi(note, score.key)) ?? [];
       }, controller.signal, () => {
@@ -378,13 +405,13 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
   }
 
   const remaining = event?.notes.filter((note) => !progress.correct.has(note.id)) ?? [];
-  const highlighted = playbackIndex === null ? remaining : shownEvent?.notes ?? [];
+  const highlighted = playbackIndex === null ? (mode === "guitar" ? remaining : remaining.slice(0, 1)) : shownEvent?.notes ?? [];
   const paired = event?.notes.some((note) => note.voice === "bass");
   const prompt = remaining.length <= 1 ? "Play" : paired ? "Play together" : "Pick each note separately";
   return <>
     <header className={styles.heading}>
       <h1>{score.title}</h1>
-      <p>{progress.correct.size} of {total} notes played</p>
+      <p>{progress.correct.size} of {total} notes {mode === "guitar" ? "played" : "named"}</p>
       {meter && <p>Time signature {meter.beats}/{meter.beatUnit}</p>}
       <progress aria-label="Practice progress" max={total} value={progress.correct.size} />
       <a className={styles.textButton} href="#sightstring-best-times">Best times</a>
@@ -432,7 +459,9 @@ function PracticeTrack({ score, track, showPhoto, showFingering }: {
       <div aria-live="polite">
         <strong>{playbackIndex === -1 && meter ? "Counting in" : playbackIndex !== null ? "Playing score"
           : !event ? "Score complete" : state === "listening" ? "Listening" : state === "starting" ? "Starting microphone…" : "Play at your own pace"}</strong>
-        <p>{playbackIndex !== null ? null : !event ? latestAttempt && `Time: ${formatDuration(latestAttempt.durationMs)}` : state === "listening"
+        <p>{playbackIndex !== null ? null : !event ? latestAttempt && `Time: ${formatDuration(latestAttempt.durationMs)}`
+          : mode !== "guitar" ? (state === "listening" && speechMiss ? "Try that note again." : "Say the highlighted note.")
+          : state === "listening"
           ? `${prompt} · ${remaining.map((note) => practiceNoteName(note, score.key)).join(", ")}`
           : paired ? "Use standard tuning and pluck both notes together." : "Use standard tuning and pluck one note at a time."}</p>
         {error && <p role="alert">{error}</p>}
@@ -874,7 +903,7 @@ export function Sightstring() {
                 </div>}
               </section></li>;
             })}</ul>}
-            <p className={styles.local}>Scores and photos are saved to your library. Microphone audio stays in this browser.</p>
+            <p className={styles.local}>Scores and photos are saved to your library. Guitar audio stays in this browser.</p>
           </section>
         </>}
   </div>;

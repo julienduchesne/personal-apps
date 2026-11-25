@@ -1,5 +1,7 @@
 export type Accidental = -1 | 0 | 1 | null;
 export type Finger = 0 | 1 | 2 | 3 | 4;
+export type SpeechMode = "solfege" | "letters";
+export type PracticeMode = "guitar" | SpeechMode;
 export const noteDurations = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4] as const;
 
 export const beatUnits = [1, 2, 4, 8, 16, 32] as const;

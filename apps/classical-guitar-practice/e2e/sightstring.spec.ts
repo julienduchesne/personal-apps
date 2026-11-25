@@ -105,6 +105,63 @@ test("shows spinners while saved scores and practice history load", async ({ pag
   }
 });
 
+test("practices spoken solfège and letters with separate best times", async ({ page }) => {
+  const id = crypto.randomUUID();
+  const score: Score = {
+    id, title: "Speech drill", key: 0, generated: true,
+    staves: [exerciseStaff(id, [{ step: 2, accidental: null }, { step: 3, accidental: 1 }])],
+  };
+  await page.route("**/api/sightstring", (route) => route.fulfill({ json: [score] }));
+  await page.addInitScript(() => {
+    class MockRecognition {
+      lang = "";
+      onresult?: (event: unknown) => void;
+      onstart?: () => void;
+      handle = (event: Event) => {
+        this.onresult?.({ resultIndex: 0, results: [{ isFinal: true, 0: { transcript: (event as CustomEvent<string>).detail } }] });
+      };
+      start() {
+        document.body.dataset.speechLanguage = this.lang;
+        window.addEventListener("practice-speech", this.handle);
+        this.onstart?.();
+      }
+      abort() {
+        window.removeEventListener("practice-speech", this.handle);
+      }
+    }
+    Object.defineProperty(window, "SpeechRecognition", { value: MockRecognition });
+  });
+  await page.goto("/sightstring");
+  await page.getByRole("region", { name: "Speech drill" }).getByRole("button", { name: "Practice", exact: true }).click();
+  const mode = page.getByLabel("Practice mode");
+  await expect(mode).toHaveValue("guitar");
+  const say = (text: string) => page.evaluate((detail) => window.dispatchEvent(new CustomEvent("practice-speech", { detail })), text);
+  const leaderboard = page.getByRole("region", { name: "Best times" });
+
+  await mode.selectOption("solfege");
+  await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-speech-language", "fr-FR");
+  await say("Sol");
+  await expect(page.getByText("0 of 2 notes named")).toBeVisible();
+  await expect(page.getByText("Try that note again.")).toBeVisible();
+  await say("Mi");
+  await expect(page.getByText("1 of 2 notes named")).toBeVisible();
+  await say("Fa dièse.");
+  await expect(page.getByText("Score complete")).toBeVisible();
+  await expect(leaderboard.getByRole("listitem")).toHaveCount(1);
+
+  await mode.selectOption("letters");
+  await expect(leaderboard.getByText("No completed attempts yet.")).toBeVisible();
+  await page.getByRole("button", { name: "Start listening" }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-speech-language", "en-US");
+  await say("E, F sharp.");
+  await expect(page.getByText("2 of 2 notes named")).toBeVisible();
+  await expect(leaderboard.getByRole("listitem")).toHaveCount(1);
+
+  await mode.selectOption("guitar");
+  await expect(leaderboard.getByText("No completed attempts yet.")).toBeVisible();
+});
+
 test("keeps a ledger-line note and skips the fingering 3 beside it", async ({ page }) => {
   await page.goto("/sightstring");
   const image = await page.evaluate(() => {
@@ -290,9 +347,7 @@ test("saves a score and its photo across browsers and supports downloading and r
   const current = page.locator('[data-practice-line="current"]');
   const view = page.getByLabel("Score view");
   const fingers = page.getByRole("checkbox", { name: "Show fingering" });
-  await expect(view).toHaveValue("photo");
-  await expect(current.locator('[data-score-view="photo"]')).toBeVisible();
-  await view.selectOption("notation");
+  await expect(view).toHaveValue("notation");
   await expect(current.locator('[data-score-view="notation"] [data-clef]')).toBeVisible();
   await expect(current.locator('[data-status="current"]')).toHaveCount(1);
   await fingers.check();

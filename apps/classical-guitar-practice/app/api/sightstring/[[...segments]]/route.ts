@@ -82,9 +82,10 @@ function isScore(value: unknown, id: string): value is Score {
     && value.staves.every(staff) && value.staves.some((entry) => entry.notes.length > 0);
 }
 
-function attemptPrefix(id: string, track: string) {
+function attemptPrefix(id: string, track: string, mode: string | null) {
   if (!(uuid.test(id) || id === exercise.id) || !/^[1-9]\d?$/.test(track) || Number(track) > 32) return;
-  return `sightstring/attempts/${id}/${track}/`;
+  if (mode === null || mode === "guitar") return `sightstring/attempts/${id}/${track}/`;
+  if (mode === "solfege" || mode === "letters") return `sightstring/attempts/${id}/${mode}/${track}/`;
 }
 
 function isAttempt(value: unknown, id: string): value is PracticeAttempt {
@@ -115,7 +116,7 @@ export async function GET(request: Request, { params }: Context) {
 
   const [id, image, track] = segments;
   if (segments.length === 3 && image === "attempts") {
-    const path = attemptPrefix(id, track);
+    const path = attemptPrefix(id, track, new URL(request.url).searchParams.get("mode"));
     if (!path) return fail(404, "Leaderboard not found.");
     try {
       if (await isDeleted(id)) return fail(410, "Score deleted.");
@@ -154,7 +155,7 @@ export async function PUT(request: Request, { params }: Context) {
   const segments = (await params).segments ?? [];
   const [id, image, track, attemptId] = segments;
   if (segments.length === 4 && image === "attempts") {
-    const path = attemptPrefix(id, track);
+    const path = attemptPrefix(id, track, new URL(request.url).searchParams.get("mode"));
     if (!path || !uuid.test(attemptId)) return fail(404, "Attempt not found.");
     const attempt: unknown = await request.json().catch(() => null);
     if (!isAttempt(attempt, attemptId)) return fail(400, "Invalid practice attempt.");

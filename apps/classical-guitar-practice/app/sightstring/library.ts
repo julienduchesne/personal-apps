@@ -1,4 +1,4 @@
-import type { PracticeAttempt, Score } from "./score";
+import type { PracticeAttempt, PracticeMode, Score } from "./score";
 
 const api = "/api/sightstring";
 
@@ -14,13 +14,17 @@ export async function listScores(): Promise<Score[]> {
   return (await requireSuccess(await fetch(api, { cache: "no-store" }))).json();
 }
 
-export async function listBestAttempts(scoreId: string, track: number, signal: AbortSignal): Promise<PracticeAttempt[]> {
-  const response = await fetch(`${api}/${scoreId}/attempts/${track}`, { cache: "no-store", signal });
+export async function listBestAttempts(scoreId: string, track: number, signal: AbortSignal, mode: PracticeMode): Promise<PracticeAttempt[]> {
+  const response = await fetch(`${api}/${scoreId}/attempts/${track}${attemptQuery(mode)}`, { cache: "no-store", signal });
   return (await requireSuccess(response)).json();
 }
 
-export async function saveAttempt(scoreId: string, track: number, attempt: PracticeAttempt): Promise<void> {
-  await requireSuccess(await fetch(`${api}/${scoreId}/attempts/${track}/${attempt.id}`, {
+function attemptQuery(mode: PracticeMode) {
+  return mode === "guitar" ? "" : `?mode=${mode}`;
+}
+
+export async function saveAttempt(scoreId: string, track: number, attempt: PracticeAttempt, mode: PracticeMode): Promise<void> {
+  await requireSuccess(await fetch(`${api}/${scoreId}/attempts/${track}/${attempt.id}${attemptQuery(mode)}`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(attempt), keepalive: true,
   }));
 }
